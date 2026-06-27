@@ -23,8 +23,8 @@ def clean_fitness_data(input_file, output_file):
     print("Standardizing gender...")
     # Dictionary
     gender_map = {
-        'M': 'Male', 'MALE': 'Male', 'male': 'Male', 'Male': 'Male',
-        'F': 'Female', 'FEMALE': 'Female', 'female': 'Female', 'Female': 'Female'
+        'M': 'Male', 'm': 'Male', 'MALE': 'Male', 'male': 'Male', 'Male': 'Male',
+        'F': 'Female', 'f': 'Female', 'FEMALE': 'Female', 'female': 'Female', 'Female': 'Female'
     }
     df['gender'] = df['gender'].str.strip().map(gender_map) # Replace values in the gender column based on the dict
 
