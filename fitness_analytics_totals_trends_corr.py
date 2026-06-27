@@ -1,4 +1,5 @@
 import pandas as pd
+from fitness_analytics_stats import STEP_BENCHMARK
 
 INPUT_FILE = "Group4_FitnessAnalytics_cleaned.csv"
 OUTPUT_FILE = "Group4_FitnessAnalytics_stats.csv"
@@ -55,10 +56,10 @@ high_calorie_count = len(df[df["calories_burned"] >= 300])
 pct_high_calorie = high_calorie_count / total_sessions * 100
 print(f"% of sessions with calories burned >= 300:          {pct_high_calorie:.2f}%")
 
-# Percentage of sessions with steps recorded >= 10,000
-high_steps_count = len(df[df["daily_steps"] >= 10000])
+# Percentage of sessions meeting the step benchmark
+high_steps_count = len(df[df["daily_steps"] >= STEP_BENCHMARK])
 pct_high_steps = high_steps_count / total_sessions * 100
-print(f"% of sessions with steps recorded >= 10,000:        {pct_high_steps:.2f}%")
+print(f"% of sessions with steps recorded >= {STEP_BENCHMARK:,}:        {pct_high_steps:.2f}%")
 
 # Percentage of sessions with duration >= 60 minutes
 long_duration_count = len(df[df["duration_minutes"] >= 60])
