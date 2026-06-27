@@ -9,6 +9,14 @@ GENDER_MAP = {
 NUMERIC_COLS = ["calories_burned", "duration_minutes", "daily_steps", "avg_heart_rate", "sleep_hours"]
 
 
+def _to_numeric(df):
+    """Coerce numeric columns before any median/outlier logic."""
+    df = df.replace(r"^\s*$", np.nan, regex=True)
+    for col in NUMERIC_COLS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
 def clean_fitness_data(input_file, output_file):
     print("Loading data...")
     df = pd.read_csv(input_file)
@@ -21,23 +29,23 @@ def clean_fitness_data(input_file, output_file):
     df = df.dropna(subset=["date"])
 
     print("Standardizing categorical fields...")
-    df["gender"] = df["gender"].str.strip().map(GENDER_MAP)
-    df["activity_type"] = df["activity_type"].str.strip().str.title().replace("Runing", "Running")
+    df["gender"] = df["gender"].astype(str).str.strip().map(GENDER_MAP)
+    df["activity_type"] = df["activity_type"].astype(str).str.strip().str.title().replace("Runing", "Running")
+    df["activity_type"] = df["activity_type"].replace({"Hiit": "HIIT"})
+
+    print("Coercing numeric columns...")
+    df = _to_numeric(df)
 
     print("Handling outliers...")
     dur_median = df.loc[df["duration_minutes"] != 450, "duration_minutes"].median()
     df.loc[df["duration_minutes"] == 450, "duration_minutes"] = dur_median
 
     df.loc[df["daily_steps"] < 0, "daily_steps"] = np.nan
-    df["daily_steps"] = df["daily_steps"].fillna(df["daily_steps"].median())
-
     df.loc[df["avg_heart_rate"] > 250, "avg_heart_rate"] = np.nan
-    df["avg_heart_rate"] = df["avg_heart_rate"].fillna(df["avg_heart_rate"].median())
 
     print("Filling missing values...")
-    df = df.replace(r"^\s*$", np.nan, regex=True)
     for col in NUMERIC_COLS:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(df[col].median())
+        df[col] = df[col].fillna(df[col].median())
 
     df.to_csv(output_file, index=False)
 

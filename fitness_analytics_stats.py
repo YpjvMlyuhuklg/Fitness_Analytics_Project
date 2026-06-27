@@ -32,7 +32,30 @@ COL_LABELS = {
     "avg_steps": "Avg Steps",
     "avg_heart_rate": "Avg Heart Rate",
     "avg_sleep": "Avg Sleep (hrs)",
+    "participant_id": "Participant",
+    "risk_reason": "Risk Flags",
 }
+
+
+def format_activity(name) -> str:
+    text = str(name)
+    return "HIIT" if text == "Hiit" else text
+
+
+def format_display_value(col: str, val):
+    if pd.isna(val):
+        return ""
+    if col == "activity_type":
+        return format_activity(val)
+    if col in ("daily_steps", "avg_steps", "total_steps", "sessions", "total_sessions"):
+        return f"{int(round(float(val))):,}"
+    if col in ("avg_heart_rate",):
+        return f"{float(val):.0f}"
+    if isinstance(val, float) and col not in ("calories_per_minute",):
+        if col in ("avg_calories", "avg_duration", "avg_sleep", "total_calories"):
+            return f"{val:.2f}"
+        return f"{val:,.2f}" if abs(val) >= 100 else f"{val:.2f}"
+    return val
 
 
 def compute_all_statistics(df: pd.DataFrame) -> dict:
@@ -76,6 +99,35 @@ def compute_all_statistics(df: pd.DataFrame) -> dict:
     participants_met = int((participant_steps >= STEP_BENCHMARK).sum())
     participant_total = len(participant_steps)
 
+    participant_summary = (
+        df.groupby("participant_id")
+        .agg(
+            total_sessions=("activity_type", "count"),
+            total_calories=("calories_burned", "sum"),
+            avg_calories=("calories_burned", "mean"),
+            total_steps=("daily_steps", "sum"),
+            avg_steps=("daily_steps", "mean"),
+            avg_sleep=("sleep_hours", "mean"),
+        )
+        .round(2)
+        .reset_index()
+        .sort_values("total_calories", ascending=False)
+    )
+
+    at_risk = participant_summary[
+        (participant_summary["avg_steps"] < STEP_BENCHMARK)
+        | (participant_summary["avg_sleep"] < LOW_SLEEP_HOURS)
+    ].copy()
+    flags = []
+    for _, row in at_risk.iterrows():
+        reasons = []
+        if row["avg_steps"] < STEP_BENCHMARK:
+            reasons.append(f"low steps ({row['avg_steps']:.0f})")
+        if row["avg_sleep"] < LOW_SLEEP_HOURS:
+            reasons.append(f"low sleep ({row['avg_sleep']:.1f}h)")
+        flags.append(", ".join(reasons))
+    at_risk["risk_reason"] = flags
+
     return {
         "descriptive": descriptive,
         "percentages": {
@@ -118,20 +170,8 @@ def compute_all_statistics(df: pd.DataFrame) -> dict:
             .round(2)
             .reset_index()
         ),
-        "participant_summary": (
-            df.groupby("participant_id")
-            .agg(
-                total_sessions=("activity_type", "count"),
-                total_calories=("calories_burned", "sum"),
-                avg_calories=("calories_burned", "mean"),
-                total_steps=("daily_steps", "sum"),
-                avg_steps=("daily_steps", "mean"),
-                avg_sleep=("sleep_hours", "mean"),
-            )
-            .round(2)
-            .reset_index()
-            .sort_values("total_calories", ascending=False)
-        ),
+        "participant_summary": participant_summary,
+        "at_risk_participants": at_risk.sort_values("avg_steps"),
         "monthly_trend": _monthly_trend(df),
         "weekly_trend": _weekly_trend(df),
         "correlation_matrix": df[NUMERIC_COLS].corr().round(3),
@@ -206,6 +246,36 @@ def _rankings(df: pd.DataFrame) -> dict:
     return rankings
 
 
+def build_stakeholder_insights(stats: dict) -> dict:
+    """Short insight blurbs tailored to each stakeholder group."""
+    eff = stats["activity_effectiveness"]
+    step = stats["step_benchmark"]
+    desc = stats["descriptive"]
+    pcts = stats["percentages"]
+    at_risk = stats["at_risk_participants"]
+    top = format_activity(stats["activity_frequency"].iloc[0]["activity_type"])
+
+    return {
+        "individuals": (
+            f"Cohort averages {desc['daily_steps']['mean']:,.0f} steps and {desc['sleep_hours']['mean']:.1f} hrs sleep per session. "
+            f"{pcts['steps_benchmark_pct']:.1f}% of sessions meet the {STEP_BENCHMARK:,}-step benchmark. "
+            f"Most logged activity: {top}."
+        ),
+        "coaches": (
+            f"Highest session burn: {format_activity(eff['highest_avg_calories']['activity_type'])} "
+            f"({eff['highest_avg_calories']['avg_calories']:.0f} kcal). "
+            f"Best time efficiency: {format_activity(eff['most_efficient']['activity_type'])} "
+            f"({eff['most_efficient']['calories_per_minute']:.1f} kcal/min). "
+            f"Use {format_activity(eff['lowest_avg_calories']['activity_type'])} for recovery programming."
+        ),
+        "administrators": (
+            f"{len(at_risk)} of {step['participants_total']} participants ({100 - step['participant_pct_met']:.0f}% below step target) "
+            f"may need wellness intervention (avg steps < {STEP_BENCHMARK:,} or sleep < {LOW_SLEEP_HOURS}h). "
+            f"{pcts['low_sleep_pct']:.1f}% of sessions follow low-sleep nights."
+        ),
+    }
+
+
 def generate_recommendations(stats: dict) -> list[str]:
     """Build data-driven recommendations from computed statistics."""
     eff = stats["activity_effectiveness"]
@@ -219,9 +289,9 @@ def generate_recommendations(stats: dict) -> list[str]:
 
     recs = [
         (
-            f"For maximum calories per session, prioritize {eff['highest_avg_calories']['activity_type']} "
+            f"For maximum calories per session, prioritize {format_activity(eff['highest_avg_calories']['activity_type'])} "
             f"({eff['highest_avg_calories']['avg_calories']:.0f} kcal avg). "
-            f"For time-limited workouts, choose {eff['most_efficient']['activity_type']} "
+            f"For time-limited workouts, choose {format_activity(eff['most_efficient']['activity_type'])} "
             f"({eff['most_efficient']['calories_per_minute']:.1f} kcal/min)."
         ),
         (
@@ -236,11 +306,11 @@ def generate_recommendations(stats: dict) -> list[str]:
         (
             f"Workout duration and calories correlate at r={r_dur_cal:.3f}. "
             f"Sessions under {LONG_SESSION_MIN} minutes can still be effective when choosing efficient activities "
-            f"such as {eff['most_efficient']['activity_type']}."
+            f"such as {format_activity(eff['most_efficient']['activity_type'])}."
         ),
         (
             f"Average daily steps are {desc['daily_steps']['mean']:,.0f}. "
-            f"Use {eff['lowest_avg_calories']['activity_type']} for recovery days "
+            f"Use {format_activity(eff['lowest_avg_calories']['activity_type'])} for recovery days "
             f"({eff['lowest_avg_calories']['avg_calories']:.0f} kcal avg) and reserve high-burn activities for peak training days."
         ),
     ]
@@ -255,6 +325,7 @@ def build_summary_report(stats: dict, df: pd.DataFrame, raw_path: str, cleaned_p
     corr = stats["correlation_matrix"]
     top_activity = stats["activity_frequency"].iloc[0]
     recommendations = generate_recommendations(stats)
+    stakeholders = build_stakeholder_insights(stats)
 
     rec_block = "\n".join(f"  {i}. {rec}" for i, rec in enumerate(recommendations, 1))
 
@@ -283,9 +354,9 @@ Workout logs          : {len(df)}
 
 [3] ACTIVITY EFFECTIVENESS
 -----------------------------------------------------------------------------
-Highest avg calories per session : {eff['highest_avg_calories']['activity_type']} ({eff['highest_avg_calories']['avg_calories']:.0f} kcal)
-Most calories per minute         : {eff['most_efficient']['activity_type']} ({eff['most_efficient']['calories_per_minute']:.1f} kcal/min)
-Lowest avg calories per session  : {eff['lowest_avg_calories']['activity_type']} ({eff['lowest_avg_calories']['avg_calories']:.0f} kcal)
+Highest avg calories per session : {format_activity(eff['highest_avg_calories']['activity_type'])} ({eff['highest_avg_calories']['avg_calories']:.0f} kcal)
+Most calories per minute         : {format_activity(eff['most_efficient']['activity_type'])} ({eff['most_efficient']['calories_per_minute']:.1f} kcal/min)
+Lowest avg calories per session  : {format_activity(eff['lowest_avg_calories']['activity_type'])} ({eff['lowest_avg_calories']['avg_calories']:.0f} kcal)
 
 Ranked by avg calories:
 {stats['activity_summary'][['activity_type', 'avg_calories', 'calories_per_minute']].to_string(index=False)}
@@ -301,6 +372,15 @@ Ranked by avg calories:
 [5] RECOMMENDATIONS
 -----------------------------------------------------------------------------
 {rec_block}
+
+[6] STAKEHOLDER INSIGHTS
+-----------------------------------------------------------------------------
+Health-Conscious Individuals : {stakeholders['individuals']}
+Athletic Trainers & Coaches  : {stakeholders['coaches']}
+Wellness Administrators      : {stakeholders['administrators']}
+
+At-risk participants ({len(stats['at_risk_participants'])}):
+{stats['at_risk_participants'][['participant_id', 'avg_steps', 'avg_sleep', 'risk_reason']].to_string(index=False) if len(stats['at_risk_participants']) else '  None identified'}
 
 =============================================================================
 Report generated by PyPulse from cleaned tracker data.
