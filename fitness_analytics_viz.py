@@ -41,6 +41,8 @@
 #   avg_heart_rate, sleep_hours
 # =============================================================================
 
+
+# Import necessary libraries
 import os
 import calendar
 import pandas as pd
