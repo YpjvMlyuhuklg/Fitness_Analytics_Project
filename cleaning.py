@@ -10,7 +10,6 @@ NUMERIC_COLS = ["calories_burned", "duration_minutes", "daily_steps", "avg_heart
 
 
 def _to_numeric(df):
-    """Coerce numeric columns before any median/outlier logic."""
     df = df.replace(r"^\s*$", np.nan, regex=True)
     for col in NUMERIC_COLS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -18,11 +17,6 @@ def _to_numeric(df):
 
 
 def parse_fitness_date(value):
-    """Parse mixed date inputs (DD/MM/YYYY, MM/DD/YYYY, or 'February 3, 2026').
-
-    Target storage format after cleaning is YYYY-MM-DD (ISO 8601 date).
-    Ambiguous slash dates prefer day-first when that yields Jan–Mar; otherwise month-first.
-    """
     if pd.isna(value):
         return pd.NaT
     s = str(value).strip()
