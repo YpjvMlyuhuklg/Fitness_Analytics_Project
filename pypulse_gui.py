@@ -160,14 +160,14 @@ class PyPulseApp:
         tk.Label(
             title_block,
             text="Health & Fitness Analytics Dashboard",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 10, "bold"),
             fg=self.c_secondary,
             bg=self.c_card,
         ).pack(anchor="center", pady=(0, 0))
         tk.Label(
             title_block,
             text="Integrative Programming Project (Group 4)",
-            font=("Segoe UI", 10, "italic"),
+            font=("Segoe UI", 8, "italic"),
             fg="#64748B",
             bg=self.c_card,
         ).pack(anchor="center", pady=(0, 6))
