@@ -138,7 +138,7 @@ class PyPulseApp:
 
         tk.Frame(header_wrap, bg=self.c_secondary, height=4).pack(fill=tk.X)
 
-        header = tk.Frame(header_wrap, bg=self.c_card, height=120)
+        header = tk.Frame(header_wrap, bg=self.c_card, height=90)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
@@ -147,13 +147,13 @@ class PyPulseApp:
 
         try:
             logo_img = PIL.Image.open("PyPulse.png")
-            logo_img = logo_img.resize((180, 42), PIL.Image.Resampling.LANCZOS)
+            logo_img = logo_img.resize((140, 33), PIL.Image.Resampling.LANCZOS)
             self._logo_photo = PIL.ImageTk.PhotoImage(logo_img)
             tk.Label(
                 title_block,
                 image=self._logo_photo,
                 bg=self.c_card,
-            ).pack(anchor="center", pady=(6, 0))
+            ).pack(anchor="center", pady=(2, 0))
         except Exception:
             pass
 
@@ -163,14 +163,14 @@ class PyPulseApp:
             font=("Segoe UI", 12, "bold"),
             fg=self.c_secondary,
             bg=self.c_card,
-        ).pack(anchor="center", pady=(2, 2))
+        ).pack(anchor="center", pady=(0, 0))
         tk.Label(
             title_block,
             text="Integrative Programming Project (Group 4)",
             font=("Segoe UI", 10, "italic"),
             fg="#64748B",
             bg=self.c_card,
-        ).pack(anchor="center", pady=(0, 12))
+        ).pack(anchor="center", pady=(0, 6))
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
