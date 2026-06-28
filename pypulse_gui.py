@@ -81,6 +81,8 @@ class PyPulseApp:
         self.raw_filepath = tk.StringVar(value="Group4_FitnessAnalytics_raw.csv")
         self.cleaned_filepath = tk.StringVar(value="Group4_FitnessAnalytics_cleaned.csv")
         self.df = None
+        self.raw_df = None
+        self.showing_original = False
         self.stats = None
         self.chart_descriptions = {}
         self.sort_column_direction = {}
@@ -289,6 +291,22 @@ class PyPulseApp:
         ttk.Button(clean_card, text="Run Clean & Deduplication",
                    command=self.execute_data_cleaning).pack(fill=tk.X, padx=15, pady=10)
 
+        self.btn_view_original = ttk.Button(
+            clean_card,
+            text="View Original File",
+            command=self.toggle_original_preview,
+            state="disabled",
+        )
+        self.btn_view_original.pack(fill=tk.X, padx=15, pady=(0, 10))
+
+        tk.Label(
+            clean_card,
+            text="Dates are normalized to YYYY-MM-DD during cleaning.",
+            font=("Segoe UI", 8),
+            bg=self.c_card,
+            fg="#64748B",
+        ).pack(anchor="w", padx=15, pady=(0, 8))
+
         self.clean_stats_frame = tk.Frame(clean_card, bg=self.c_card)
         self.clean_stats_frame.pack(fill=tk.X, padx=15, pady=5)
         self.lbl_orig_rows = tk.Label(self.clean_stats_frame, text="Original Records: N/A",
@@ -324,8 +342,10 @@ class PyPulseApp:
 
         preview_header = tk.Frame(preview_frame, bg=self.c_card)
         preview_header.pack(fill=tk.X, padx=12, pady=8)
-        tk.Label(preview_header, text="Cleaned Dataset Preview", font=("Segoe UI", 12, "bold"),
-                 fg=self.c_primary, bg=self.c_card).pack(side=tk.LEFT)
+        self.lbl_preview_title = tk.Label(
+            preview_header, text="Cleaned Dataset Preview", font=("Segoe UI", 12, "bold"),
+            fg=self.c_primary, bg=self.c_card)
+        self.lbl_preview_title.pack(side=tk.LEFT)
 
         search_frame = tk.Frame(preview_header, bg=self.c_card)
         search_frame.pack(side=tk.RIGHT)
@@ -358,24 +378,19 @@ class PyPulseApp:
             self.raw_filepath.set(path)
 
     def auto_load_default_data(self):
-        if not os.path.exists(self.cleaned_filepath.get()):
+        raw_path = self.raw_filepath.get()
+        if not os.path.exists(raw_path):
             return
         try:
-            self.df = pd.read_csv(self.cleaned_filepath.get())
-            self.df["date"] = pd.to_datetime(self.df["date"])
-            raw_path = self.raw_filepath.get()
-            if os.path.exists(raw_path):
-                raw_df = pd.read_csv(raw_path)
-                orig_len = len(raw_df)
-                self.update_quality_labels(raw_df)
-            else:
-                orig_len = "N/A"
-                self.update_quality_labels(None)
-            self.update_cleaning_stats_labels(orig_len, len(self.df))
-            self.populate_treeview(self.df)
-            self.run_analytics_pipeline()
+            raw_df = pd.read_csv(raw_path)
+            self.raw_df = raw_df.copy()
+            self.showing_original = True
+            self.update_quality_labels(raw_df)
+            self.update_cleaning_stats_labels(len(raw_df), "N/A")
+            self.lbl_preview_title.config(text="Original Dataset Preview")
+            self.populate_treeview(self.raw_df, raw_dates=True)
         except Exception as exc:
-            print(f"Error loading default cleaned data: {exc}")
+            print(f"Error loading default raw data: {exc}")
 
     def execute_data_cleaning(self):
         raw_path = self.raw_filepath.get()
@@ -386,6 +401,10 @@ class PyPulseApp:
         try:
             raw_df = pd.read_csv(raw_path)
             original_len = len(raw_df)
+            self.raw_df = raw_df.copy()
+            self.showing_original = False
+            self.btn_view_original.config(state="normal", text="View Original File")
+            self.lbl_preview_title.config(text="Cleaned Dataset Preview")
             self.update_quality_labels(raw_df)
             clean_fitness_data(raw_path, cleaned_path)
             self.df = pd.read_csv(cleaned_path)
@@ -393,14 +412,33 @@ class PyPulseApp:
             self.update_cleaning_stats_labels(original_len, len(self.df))
             self.populate_treeview(self.df)
             self.run_analytics_pipeline()
-            messagebox.showinfo("Success", f"Cleaning complete. Loaded {len(self.df)} records.")
+            messagebox.showinfo(
+                "Success",
+                f"Cleaning complete. Loaded {len(self.df)} records.\n"
+                f"Saved sorted file:\n{cleaned_path}",
+            )
         except Exception as exc:
             messagebox.showerror("Error", f"Data cleaning failed:\n{exc}")
+
+    def toggle_original_preview(self):
+        if self.raw_df is None:
+            return
+        if self.showing_original:
+            if self.df is not None:
+                self.showing_original = False
+                self.btn_view_original.config(text="View Original File")
+                self.lbl_preview_title.config(text="Cleaned Dataset Preview")
+                self.populate_treeview(self.df)
+        else:
+            self.showing_original = True
+            self.btn_view_original.config(text="View Cleaned File")
+            self.lbl_preview_title.config(text="Original Dataset Preview")
+            self.populate_treeview(self.raw_df, raw_dates=True)
 
     def update_cleaning_stats_labels(self, original_count, cleaned_count):
         self.lbl_orig_rows.config(text=f"Original Records: {original_count}")
         self.lbl_clean_rows.config(text=f"Cleaned Records: {cleaned_count}")
-        if isinstance(original_count, int):
+        if isinstance(original_count, int) and isinstance(cleaned_count, int):
             self.lbl_deleted_rows.config(text=f"Removed Records: {original_count - cleaned_count}")
         else:
             self.lbl_deleted_rows.config(text="Removed Records: N/A")
@@ -416,7 +454,7 @@ class PyPulseApp:
         self.lbl_dupes_removed.config(text=f"Duplicate Rows Removed: {metrics['duplicate_rows']}")
         self.lbl_labels_fixed.config(text=f"Inconsistent Labels Fixed: {metrics['inconsistent_labels']}")
 
-    def populate_treeview(self, dataframe):
+    def populate_treeview(self, dataframe, raw_dates=False):
         self.tree.delete(*self.tree.get_children())
         cols = list(dataframe.columns)
         self.tree["columns"] = cols
@@ -424,45 +462,50 @@ class PyPulseApp:
             label = COL_LABELS.get(col, col.replace("_", " ").title())
             self.tree.heading(col, text=label, command=lambda c=col: self.sort_treeview_column(c))
             width = {
-                "participant_id": 95,
-                "date": 115,
-                "gender": 90,
+                "participant_id": 90,
+                "date": 150,
+                "gender": 80,
                 "activity_type": 130,
-                "avg_heart_rate": 145,
-                "calories_burned": 155,
-                "daily_steps": 120,
-                "sleep_hours": 110,
-            }.get(col, 125)
-            self.tree.column(col, width=width, anchor="center")
+                "avg_heart_rate": 140,
+                "calories_burned": 165,
+                "daily_steps": 110,
+                "sleep_hours": 100,
+            }.get(col, 120)
+            self.tree.column(col, width=width, minwidth=width, anchor="center", stretch=True)
         for _, row in dataframe.iterrows():
             values = []
             for c in cols:
                 val = row[c]
-                if c == "date" and isinstance(val, pd.Timestamp):
-                    val = val.strftime("%Y-%m-%d")
+                if c == "date":
+                    if isinstance(val, pd.Timestamp):
+                        val = val.strftime("%Y-%m-%d")
+                    elif not raw_dates and isinstance(val, str) and len(val) >= 10:
+                        val = val[:10]
                 else:
                     val = format_display_value(c, val)
                 values.append(val)
             self.tree.insert("", "end", values=values)
 
     def filter_treeview(self):
-        if self.df is None:
+        active_df = self.raw_df if self.showing_original and self.raw_df is not None else self.df
+        if active_df is None:
             return
+        raw_dates = self.showing_original
         if self.search_has_placeholder:
-            self.populate_treeview(self.df)
+            self.populate_treeview(active_df, raw_dates=raw_dates)
             return
         query = self.search_val.get().lower().strip()
         if not query or query == SEARCH_PLACEHOLDER.lower():
-            self.populate_treeview(self.df)
+            self.populate_treeview(active_df, raw_dates=raw_dates)
             return
-        mask = self.df.astype(str).apply(
+        mask = active_df.astype(str).apply(
             lambda row: row.str.lower().str.contains(query, na=False).any(), axis=1
         )
-        filtered = self.df[mask]
+        filtered = active_df[mask]
         if filtered.empty:
             self.tree.delete(*self.tree.get_children())
             return
-        self.populate_treeview(filtered)
+        self.populate_treeview(filtered, raw_dates=raw_dates)
 
     def sort_treeview_column(self, col):
         direction = self.sort_column_direction.get(col, False)
@@ -890,12 +933,12 @@ class PyPulseApp:
         desc_panel = tk.Frame(self.tab_viz, bg="#F1F5F9",
                               highlightbackground=self.c_border, highlightthickness=1)
         desc_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
-        tk.Label(desc_panel, text="INSIGHT", font=("Segoe UI", 8, "bold"),
-                 fg=self.c_secondary, bg="#F1F5F9").pack(anchor="w", padx=14, pady=(8, 0))
-        self.lbl_chart_desc = tk.Label(desc_panel, text="", font=("Segoe UI", 10),
+        tk.Label(desc_panel, text="INSIGHT", font=("Segoe UI", 10, "bold"),
+                 fg=self.c_secondary, bg="#F1F5F9").pack(anchor="w", padx=16, pady=(10, 0))
+        self.lbl_chart_desc = tk.Label(desc_panel, text="", font=("Segoe UI", 13),
                                        fg="#334155", bg="#F1F5F9", anchor="w", justify="left",
                                        wraplength=1180)
-        self.lbl_chart_desc.pack(anchor="w", fill=tk.X, padx=14, pady=(2, 10))
+        self.lbl_chart_desc.pack(anchor="w", fill=tk.X, padx=16, pady=(4, 14))
         desc_panel.bind("<Configure>",
                         lambda e: self.lbl_chart_desc.config(wraplength=max(e.width - 28, 400)))
 
