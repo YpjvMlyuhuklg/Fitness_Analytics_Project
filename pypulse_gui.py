@@ -20,6 +20,7 @@ from fitness_analytics_stats import (
     LONG_SESSION_MIN,
 )
 from fitness_analytics_viz import show_all_charts
+from fitness_descriptions import generate_chart_descriptions
 
 SEARCH_PLACEHOLDER = "Search Participant / Activity..."
 
@@ -81,6 +82,7 @@ class PyPulseApp:
         self.cleaned_filepath = tk.StringVar(value="Group4_FitnessAnalytics_cleaned.csv")
         self.df = None
         self.stats = None
+        self.chart_descriptions = {}
         self.sort_column_direction = {}
 
         self.create_layout()
@@ -464,8 +466,13 @@ class PyPulseApp:
             return
         self.stats = compute_all_statistics(self.df)
         show_all_charts(self.df, save_dir="charts/")
+        try:
+            self.chart_descriptions = generate_chart_descriptions(self.df, self.stats)
+        except Exception as exc:
+            print(f"Could not generate chart descriptions: {exc}")
+            self.chart_descriptions = {}
         self.populate_stats_dashboard()
-        self.load_visualization_images()
+        self.update_chart_view()
         self.populate_summary_report()
 
     def setup_stats_tab(self):
@@ -497,38 +504,72 @@ class PyPulseApp:
         self.draw_group_summary_tables()
         self.draw_at_risk_table()
 
+    def _metric_chip(self, parent, value, caption, color, bg):
+        chip = tk.Frame(parent, bg=bg)
+        tk.Label(chip, text=value, font=("Segoe UI", 15, "bold"), fg=color, bg=bg,
+                 anchor="w").pack(anchor="w")
+        tk.Label(chip, text=caption, font=("Segoe UI", 9), fg="#64748B", bg=bg,
+                 anchor="w").pack(anchor="w")
+        return chip
+
     def draw_stakeholder_insights(self):
         self._clear(self.stats_insights)
         insights = build_stakeholder_insights(self.stats)
+        eff = self.stats["activity_effectiveness"]
+        step = self.stats["step_benchmark"]
+        desc = self.stats["descriptive"]
+        pcts = self.stats["percentages"]
+        at_risk = self.stats["at_risk_participants"]
+        top_activity = str(self.stats["activity_frequency"].iloc[0]["activity_type"])
+
         panels = [
-            ("Health-Conscious Individuals", insights["individuals"], "#0F766E", "#ECFDF5"),
-            ("Athletic Trainers & Coaches", insights["coaches"], "#4C72B0", "#EFF6FF"),
-            ("Wellness Administrators", insights["administrators"], "#C44E52", "#FEF2F2"),
+            ("Health-Conscious Individuals", insights["individuals"], "#0F766E", "#ECFDF5", [
+                (f"{desc['daily_steps']['mean']:,.0f}", "avg steps / session"),
+                (f"{desc['sleep_hours']['mean']:.1f} h", "avg sleep"),
+                (f"{pcts['steps_benchmark_pct']:.0f}%", "sessions hit step goal"),
+                (top_activity, "most logged activity"),
+            ]),
+            ("Athletic Trainers & Coaches", insights["coaches"], "#4C72B0", "#EFF6FF", [
+                (f"{eff['highest_avg_calories']['avg_calories']:.0f} kcal",
+                 f"top burn · {eff['highest_avg_calories']['activity_type']}"),
+                (f"{eff['most_efficient']['calories_per_minute']:.1f}/min",
+                 f"most efficient · {eff['most_efficient']['activity_type']}"),
+                (str(eff['lowest_avg_calories']['activity_type']), "best for recovery"),
+            ]),
+            ("Wellness Administrators", insights["administrators"], "#C44E52", "#FEF2F2", [
+                (f"{len(at_risk)}/{step['participants_total']}", "flagged participants"),
+                (f"{pcts['low_sleep_pct']:.0f}%", "short-sleep sessions"),
+                (f"{100 - step['participant_pct_met']:.0f}%", "below step goal"),
+            ]),
         ]
         wrapper = ttk.Frame(self.stats_insights)
-        wrapper.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
-        for _idx, (title, body, color, tint) in enumerate(panels):
-            card = tk.Frame(wrapper, bg=self.c_card, highlightbackground=color, highlightthickness=1)
-            card.pack(fill=tk.X, pady=10)
+        wrapper.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
+        wrapper.columnconfigure(0, weight=1)
+        for idx, (title, body, color, tint, chips) in enumerate(panels):
+            wrapper.rowconfigure(idx, weight=1)
+            card = tk.Frame(wrapper, bg=tint, highlightbackground=color, highlightthickness=1)
+            card.grid(row=idx, column=0, sticky="nsew", pady=5)
             self._card_hover(card)
 
-            tk.Frame(card, bg=color, height=5).pack(fill=tk.X)
+            tk.Frame(card, bg=color, width=6).pack(side=tk.LEFT, fill=tk.Y)
 
-            inner = tk.Frame(card, bg=self.c_card)
-            inner.pack(fill=tk.X)
+            block = tk.Frame(card, bg=tint)
+            block.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=22, pady=14)
 
-            tk.Frame(inner, bg=color, width=6).pack(side=tk.LEFT, fill=tk.Y)
+            tk.Label(block, text=title, font=("Segoe UI", 15, "bold"), fg=color, bg=tint,
+                     anchor="w").pack(anchor="w", pady=(0, 4))
+            body_lbl = tk.Label(block, text=body, font=("Segoe UI", 11), fg=self.c_text, bg=tint,
+                                 anchor="w", justify="left", wraplength=980)
+            body_lbl.pack(anchor="w", fill=tk.X, pady=(0, 12))
+            block.bind("<Configure>",
+                       lambda e, lbl=body_lbl: lbl.config(wraplength=max(e.width - 20, 400)))
 
-            content = tk.Frame(inner, bg=tint)
-            content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0, pady=0)
-
-            tk.Label(
-                content, text=title, font=("Segoe UI", 13, "bold"), fg=color, bg=tint,
-            ).pack(anchor="w", padx=18, pady=(16, 6))
-            tk.Label(
-                content, text=body, font=("Segoe UI", 10), fg=self.c_text, bg=tint,
-                wraplength=980, justify="left",
-            ).pack(anchor="w", padx=18, pady=(0, 18))
+            chip_row = tk.Frame(block, bg=tint)
+            chip_row.pack(anchor="w", fill=tk.X)
+            for c_idx, (value, caption) in enumerate(chips):
+                if c_idx:
+                    tk.Frame(chip_row, bg=color, width=1).pack(side=tk.LEFT, fill=tk.Y, padx=18, pady=2)
+                self._metric_chip(chip_row, value, caption, color, tint).pack(side=tk.LEFT)
 
     def draw_descriptive_stats_table(self):
         self._clear(self.stats_desc)
@@ -563,35 +604,75 @@ class PyPulseApp:
 
     def draw_benchmark_cards(self):
         self._clear(self.stats_cards)
-        self._subtitle(self.stats_cards, "Session-level percentages against recognized health thresholds.")
+        self._subtitle(self.stats_cards, "Share of sessions that meet each recognized health threshold.")
         cards_container = ttk.Frame(self.stats_cards)
-        cards_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
+        cards_container.pack(fill=tk.X, padx=12, pady=(0, 4))
 
         pcts = self.stats["percentages"]
         step = self.stats["step_benchmark"]
+        corr = self.stats["correlation_matrix"]
         card_data = [
             ("High Intensity", f"{pcts['high_intensity_pct']}%",
-             f"sessions with HR ≥ {HIGH_INTENSITY_HR} bpm", "#C44E52"),
-            ("Low Sleep", f"{pcts['low_sleep_pct']}%",
-             f"sessions after < {LOW_SLEEP_HOURS} hrs sleep", "#E2B13C"),
+             f"sessions with heart rate ≥ {HIGH_INTENSITY_HR} bpm", "#C44E52"),
+            ("Short Sleep", f"{pcts['low_sleep_pct']}%",
+             f"sessions following under {LOW_SLEEP_HOURS} hrs of sleep", "#E2B13C"),
             ("High Calorie Burn", f"{pcts['high_calorie_pct']}%",
              f"sessions burning ≥ {HIGH_CALORIE} kcal", "#55A868"),
             ("Step Benchmark", f"{pcts['steps_benchmark_pct']}%",
-             f"sessions at ≥ {STEP_BENCHMARK:,} steps ({step['participant_pct_met']:.0f}% of participants)", "#4C72B0"),
+             f"sessions reaching {STEP_BENCHMARK:,}+ daily steps", "#4C72B0"),
             ("Long Sessions", f"{pcts['long_session_pct']}%",
-             f"sessions ≥ {LONG_SESSION_MIN} minutes", "#8172B2"),
+             f"sessions lasting {LONG_SESSION_MIN}+ minutes", "#8172B2"),
         ]
 
         cards_container.columnconfigure((0, 1, 2, 3, 4), weight=1, uniform="equal")
         for idx, (title, val, desc, color) in enumerate(card_data):
             card = tk.Frame(cards_container, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
-            card.grid(row=0, column=idx, sticky="nsew", padx=6, pady=8)
+            card.grid(row=0, column=idx, sticky="nsew", padx=6, pady=4)
             self._card_hover(card)
             tk.Label(card, text=title, font=("Segoe UI", 11, "bold"), fg=self.c_primary, bg=self.c_card).pack(
                 anchor="w", padx=15, pady=(15, 5))
             tk.Label(card, text=val, font=("Segoe UI", 24, "bold"), fg=color, bg=self.c_card).pack(anchor="w", padx=15)
             tk.Label(card, text=desc, font=("Segoe UI", 9), fg="#64748B", bg=self.c_card,
                      wraplength=180, justify="left").pack(anchor="w", padx=15, pady=(5, 15))
+
+        r_sleep_hr = corr.loc["sleep_hours", "avg_heart_rate"]
+        takeaways = [
+            ("Intensity is healthy", "#C44E52",
+             f"{pcts['high_intensity_pct']:.0f}% of sessions reach the vigorous zone "
+             f"(HR ≥ {HIGH_INTENSITY_HR} bpm) and {pcts['high_calorie_pct']:.0f}% burn at least {HIGH_CALORIE} kcal."),
+            ("Steps are the weak spot", "#4C72B0",
+             f"Only {step['participant_pct_met']:.0f}% of participants average the {STEP_BENCHMARK:,}-step goal, "
+             f"so daily movement is the clearest area to improve."),
+            ("Sleep drives recovery", "#E2B13C",
+             f"{pcts['low_sleep_pct']:.0f}% of sessions follow nights under {LOW_SLEEP_HOURS} hrs of sleep; "
+             f"sleep and heart rate move together (r = {r_sleep_hr:.2f}), so short sleep raises heart rate during activity."),
+            ("Endurance holds up", "#8172B2",
+             f"{pcts['long_session_pct']:.0f}% of sessions run {LONG_SESSION_MIN} minutes or longer, "
+             f"showing the cohort sustains meaningful workout durations."),
+        ]
+
+        tk.Label(self.stats_cards, text="What these benchmarks tell us", font=("Segoe UI", 12, "bold"),
+                 fg=self.c_secondary, bg=self.c_bg, anchor="w").pack(anchor="w", padx=18, pady=(10, 2))
+
+        grid = ttk.Frame(self.stats_cards)
+        grid.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 10))
+        grid.columnconfigure((0, 1), weight=1, uniform="insight")
+        grid.rowconfigure((0, 1), weight=1, uniform="insight")
+        positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        for (heading, accent, body), (r, c) in zip(takeaways, positions):
+            mini = tk.Frame(grid, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
+            mini.grid(row=r, column=c, sticky="nsew", padx=6, pady=6)
+            self._card_hover(mini)
+            tk.Frame(mini, bg=accent, width=6).pack(side=tk.LEFT, fill=tk.Y)
+            inner = tk.Frame(mini, bg=self.c_card)
+            inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=16, pady=12)
+            tk.Label(inner, text=heading, font=("Segoe UI", 12, "bold"), fg=accent,
+                     bg=self.c_card, anchor="w").pack(anchor="w", pady=(0, 6))
+            body_lbl = tk.Label(inner, text=body, font=("Segoe UI", 10), fg="#475569",
+                                bg=self.c_card, anchor="w", justify="left", wraplength=420)
+            body_lbl.pack(anchor="w", fill=tk.X)
+            inner.bind("<Configure>",
+                       lambda e, lbl=body_lbl: lbl.config(wraplength=max(e.width - 16, 240)))
 
     def draw_correlation_table(self):
         self._clear(self.stats_corr)
@@ -656,24 +737,47 @@ class PyPulseApp:
                      font=("Segoe UI", 11, "italic"), fg="#64748B", bg=self.c_card).pack(pady=40)
 
     def setup_viz_tab(self):
-        toolbar = tk.Frame(self.tab_viz, bg=self.c_primary, height=45)
+        toolbar = tk.Frame(self.tab_viz, bg=self.c_primary, height=46)
         toolbar.pack(fill=tk.X)
         toolbar.pack_propagate(False)
-        tk.Label(toolbar, text="Charts:", font=("Segoe UI", 10, "bold"),
-                 fg="white", bg=self.c_primary).pack(side=tk.LEFT, padx=15)
+        tk.Label(toolbar, text="CHARTS", font=("Segoe UI", 9, "bold"),
+                 fg="#64748B", bg=self.c_primary).pack(side=tk.LEFT, padx=(15, 8))
 
         chart_buttons = [
-            ("Calories by Activity", "bar_calories_by_activity.png"),
-            ("Monthly Trend", "line_monthly_calories.png"),
-            ("Activity Share", "pie_activity_distribution.png"),
-            ("Sleep Distribution", "histogram_sleep_hours.png"),
-            ("Steps vs Calories", "scatter_steps_vs_calories.png"),
+            ("Calories by Activity", "bar_calories_by_activity.png", "bar"),
+            ("Monthly Trend", "line_monthly_calories.png", "line"),
+            ("Activity Share", "pie_activity_distribution.png", "pie"),
+            ("Sleep Distribution", "histogram_sleep_hours.png", "histogram"),
+            ("Steps vs Calories", "scatter_steps_vs_calories.png", "scatter"),
         ]
+        self.chart_meta = {fn: (title, key) for title, fn, key in chart_buttons}
         self.active_chart_file = tk.StringVar(value=chart_buttons[0][1])
-        for text, filename in chart_buttons:
-            tk.Button(toolbar, text=text, font=("Segoe UI", 9, "bold"), bg=self.c_primary, fg="#94A3B8",
-                      activebackground="#0F172A", activeforeground="white", bd=0, cursor="hand2",
-                      command=lambda f=filename: self.select_active_chart(f)).pack(side=tk.LEFT, padx=8, fill=tk.Y)
+        self.viz_buttons = {}
+        for title, filename, _key in chart_buttons:
+            btn = tk.Button(toolbar, text=title, font=("Segoe UI", 9, "bold"), bd=0, cursor="hand2",
+                            padx=14, command=lambda f=filename: self.select_active_chart(f))
+            btn.pack(side=tk.LEFT, padx=3, pady=6, fill=tk.Y)
+            self.viz_buttons[filename] = btn
+
+        title_bar = tk.Frame(self.tab_viz, bg=self.c_card,
+                             highlightbackground=self.c_border, highlightthickness=1)
+        title_bar.pack(fill=tk.X, padx=10, pady=(10, 0))
+        tk.Frame(title_bar, bg=self.c_secondary, width=6).pack(side=tk.LEFT, fill=tk.Y)
+        self.lbl_chart_title = tk.Label(title_bar, text="", font=("Segoe UI", 13, "bold"),
+                                        fg=self.c_primary, bg=self.c_card, anchor="w")
+        self.lbl_chart_title.pack(side=tk.LEFT, padx=12, pady=8)
+
+        desc_panel = tk.Frame(self.tab_viz, bg="#F1F5F9",
+                              highlightbackground=self.c_border, highlightthickness=1)
+        desc_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+        tk.Label(desc_panel, text="INSIGHT", font=("Segoe UI", 8, "bold"),
+                 fg=self.c_secondary, bg="#F1F5F9").pack(anchor="w", padx=14, pady=(8, 0))
+        self.lbl_chart_desc = tk.Label(desc_panel, text="", font=("Segoe UI", 10),
+                                       fg="#334155", bg="#F1F5F9", anchor="w", justify="left",
+                                       wraplength=1180)
+        self.lbl_chart_desc.pack(anchor="w", fill=tk.X, padx=14, pady=(2, 10))
+        desc_panel.bind("<Configure>",
+                        lambda e: self.lbl_chart_desc.config(wraplength=max(e.width - 28, 400)))
 
         self.chart_container = tk.Frame(self.tab_viz, bg=self.c_card,
                                         highlightbackground=self.c_border, highlightthickness=1)
@@ -682,14 +786,39 @@ class PyPulseApp:
         self.lbl_chart.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
         self.chart_container.bind("<Configure>", lambda *_: self.load_visualization_images())
 
+        self.update_chart_view()
+
+    def _highlight_active_button(self):
+        active = self.active_chart_file.get()
+        for filename, btn in self.viz_buttons.items():
+            if filename == active:
+                btn.config(bg=self.c_sky, fg="white", activebackground=self.c_sky,
+                           activeforeground="white")
+            else:
+                btn.config(bg=self.c_primary, fg="#94A3B8", activebackground="#0F172A",
+                           activeforeground="white")
+
     def select_active_chart(self, filename):
         self.active_chart_file.set(filename)
+        self.update_chart_view()
+
+    def update_chart_view(self):
+        if not hasattr(self, "lbl_chart_title"):
+            return
+        filename = self.active_chart_file.get()
+        title, key = self.chart_meta.get(filename, (filename, None))
+        self.lbl_chart_title.config(text=title)
+        self._highlight_active_button()
+        insight = self.chart_descriptions.get(key, "") if key else ""
+        self.lbl_chart_desc.config(
+            text=insight or "Load and clean a dataset to generate chart insights."
+        )
         self.load_visualization_images()
 
     def load_visualization_images(self):
         image_path = os.path.join("charts", self.active_chart_file.get())
         width = max(self.chart_container.winfo_width() - 40, 700)
-        height = max(self.chart_container.winfo_height() - 40, 450)
+        height = max(self.chart_container.winfo_height() - 40, 360)
         if os.path.exists(image_path):
             try:
                 img = PIL.Image.open(image_path)
