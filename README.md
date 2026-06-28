@@ -1,80 +1,126 @@
 # PyPulse: A Python-Driven Analytics System for Health and Fitness Tracking
 
-**PyPulse** is an interactive desktop data analytics application designed to clean, process, analyze, and visualize fitness tracker logs. Built using Python, it demonstrates a complete data science workflow—from raw data ingestion to clinical insights—packaged inside an elegant, lightweight Tkinter graphical user interface (GUI) styled with a modern, slate-and-teal theme.
+**PyPulse** is an interactive desktop data analytics application designed to clean, process, analyze, visualize, and interpret fitness tracker data. Built entirely in Python, the application demonstrates a complete data analytics workflow, from raw data ingestion and preprocessing to statistical analysis, interactive visualizations, and dynamic data-driven insights that automatically adapt to the analyzed dataset. The system is packaged within a modern Tkinter graphical user interface (GUI), providing users with an intuitive platform for exploring health and fitness data.
 
-Developed for CCIS *INTE 202 - Integrative Programming and Technologies* at the **Polytechnic University of the Philippines**.
-
----
-
-## 🚀 Key Features
-
-1. **Data Preprocessing & Cleaning**:
-   - Automatic record deduplication.
-   - Mixed-format date normalization into **YYYY-MM-DD** (handles DD/MM vs MM/DD ambiguity and text dates like `February 3, 2026`).
-   - Study window: January–March 2025.
-   - String normalization for categorical attributes (Gender spelling mappings, typo corrections like 'Runing' $\rightarrow$ 'Running').
-   - Outlier detection and replacement with median values (handling invalid workout durations of 450 minutes, negative daily steps, and heart rates exceeding 250 bpm).
-
-2. **Statistical Engine**:
-   - **Descriptive Statistics**: Calculations of Mean, Median, Mode, Standard Deviation, and ranges for all numeric dimensions.
-   - **Correlation Matrix**: Computes Pearson correlation coefficients ($r$) mapping key relationships (e.g., Workout Duration vs. Calories Burned, Sleep Hours vs. Heart Rate).
-   - **Percentage Ratios**: Measures percentages of days meeting target thresholds (high intensity days, sleep deprivation indicators).
-   - **Aggregation broken down by group**: Breakdowns sorted by activity type and gender.
-
-3. **Data Visualizations**:
-   - **Bar Chart**: Average calories burned by activity type (highest to lowest).
-   - **Line Chart**: Timeline of monthly average calorie burns.
-   - **Pie Chart**: Proportion of all workouts represented by each activity type.
-   - **Histogram**: Distribution of sleep hours with a highlighted healthy benchmark zone.
-   - **Scatter Plot**: Step count vs. calorie burn regression.
-
-4. **Interactive GUI Dashboard**:
-   - **Data Center**: Load files, run pre-processing, view original-vs-cleaned statistics, and scroll the dataset in an interactive grid supporting real-time filter searches and header-click column sorting.
-   - **Analytics**: Tabbed grids showing descriptives, indicator cards, and correlations.
-   - **Visualization Hub**: Seamlessly switch and view charts inside the dashboard.
-   - **Export Tab**: View, print, or copy the formatted clinical summary report, export cleaned data to CSV, or save summaries.
+Developed for **CCIS INTE 202 – Integrative Programming and Technologies** at the **Polytechnic University of the Philippines**.
 
 ---
 
-## 📂 Project Architecture
+# 🚀 Key Features
 
-* `pypulse_gui.py`: Main Tkinter graphical application entry point.
-* `cleaning.py`: Standalone script containing the cleaning pipeline.
-* `date_filter_sort.py`: Parses mixed raw dates, filters Jan–Mar, sorts by date.
-* `normalize_raw_dates.py`: Rewrites the raw CSV dates to YYYY-MM-DD (2025).
-* `fitness_analytics_stats.py`: Computes descriptive and grouped analytical dataframes.
-* `fitness_analytics_viz.py`: Matplotlib visual generation wrapper.
-* `eda.py`: Initial raw CSV Exploratory Data Analysis.
-* `Group4_FitnessAnalytics_raw.csv`: Raw, noisy fitness dataset (615 rows). **Only CSV shipped with the project.**
-* `Group4_FitnessAnalytics_cleaned.csv`: Generated when you click **Run Clean & Deduplication** in the GUI (sorted by participant + date).
+## 1. Data Preprocessing & Cleaning
+
+- Automatic detection and removal of duplicate records.
+- Mixed-format date normalization into the **YYYY-MM-DD** format.
+- Processing of workout records covering **January to December 2025**.
+- Detection and correction of missing values and invalid numerical entries.
+- Standardization of categorical values, including inconsistent gender labels and activity names (e.g., **"Runing" → "Running"**).
+- Correction of unrealistic values such as invalid workout durations, negative step counts, and implausible heart rates.
+- Automatic generation of a cleaned CSV dataset that serves as the foundation for all analyses, visualizations, and reports.
 
 ---
 
-## 🛠️ Installation & Execution
+## 2. Statistical Analytics
 
-### 1. Prerequisites
-Ensure you have Python 3 installed. Install the required external Python libraries:
+- **Descriptive Statistics** including Mean, Median, Mode, Standard Deviation, Minimum, and Maximum.
+- **Correlation Analysis** using Pearson's correlation coefficient to identify relationships among key fitness variables.
+- **Health Benchmarks** showing participant performance against recommended daily step and sleep goals.
+- **Grouped Analysis** summarizing workout statistics by activity type and gender.
+- **Dynamic Data-Driven Insights** that automatically interpret computed results instead of relying on predefined or hard-coded text.
+
+---
+
+## 3. Interactive Data Visualizations
+
+- **Bar Graph** – Average calories burned by activity type.
+- **Line Graph** – Monthly average calories burned throughout the year.
+- **Pie Chart** – Distribution of workout sessions by activity type.
+- **Histogram** – Distribution of sleep hours with the recommended healthy sleep range highlighted.
+- **Scatter Plot** – Relationship between daily steps and calories burned with a regression trend line.
+
+Each visualization is accompanied by automatically generated insights that adapt to the analyzed dataset, helping users interpret patterns and trends without requiring manual analysis.
+
+---
+
+## 4. Interactive Dashboard
+
+### 📊 Data Center
+
+- Load the raw fitness dataset.
+- Execute the **Run Clean & Deduplication** process.
+- Compare original and cleaned datasets.
+- Browse records through a searchable and sortable data table.
+
+### 📈 Analytics Dashboard
+
+- View descriptive statistics.
+- Explore correlation analysis.
+- Monitor health benchmark indicators.
+- Review grouped statistical summaries.
+
+### 📉 Visualization Hub
+
+- Display interactive charts directly within the application.
+- Generate dynamic data-driven insights for every visualization.
+
+### 📄 Summary & Export
+
+- Generate a comprehensive analytical summary report.
+- Copy or print generated reports.
+- Export the cleaned dataset as a CSV file.
+- Save generated summaries for future reference.
+
+---
+
+# 📂 Project Architecture
+
+| File | Description |
+|------|-------------|
+| `pypulse_gui.py` | Main entry point of the Tkinter desktop application. |
+| `cleaning.py` | Performs data cleaning and preprocessing operations. |
+| `fitness_analytics_stats.py` | Computes descriptive statistics, grouped analyses, health benchmarks, and correlation analysis. |
+| `fitness_analytics_viz.py` | Generates all visualizations and automatically creates dynamic insights based on the analyzed data. |
+| `eda.py` | Performs exploratory data analysis on the raw dataset. |
+| `Group4_FitnessAnalytics_raw.csv` | Original noisy fitness dataset containing **615 workout records** collected from **30 participants** between **January and December 2025**. |
+| `Group4_FitnessAnalytics_cleaned.csv` | Automatically generated cleaned dataset containing **600 validated records** after running the cleaning process. |
+
+---
+
+# 🛠️ Installation
+
+## Prerequisites
+
+Ensure that **Python 3** is installed, then install the required libraries:
+
 ```bash
 pip install pandas numpy matplotlib pillow
 ```
 
-### 2. Launch the Application
-Run the GUI dashboard by executing:
+---
+
+# ▶️ Running the Application
+
+Launch the application by executing:
+
 ```bash
 python pypulse_gui.py
 ```
 
+After loading the raw dataset, click **Run Clean & Deduplication** to preprocess the data and generate the cleaned dataset. Once the cleaning process is completed successfully, the **Analytics Dashboard**, **Visualization Hub**, and **Summary & Export** modules become available for use.
+
 ---
 
-## 👥 Development Team (Group 4)
-* Acerden, Chelley Maxenne R.
-* Atienza, Caryl Joy A.
-* Democer, Sean Carlo D.
-* Fernandez, Rico G.
-* Gillegao, Arabella Liss R.
-* Lazaro, Troy Lauren T.
-* Mejorada, Ayen V.
-* Ramos, Shawn Angel S.
-* Tamayo, Francis John M.
+# 👥 Development Team (Group 4)
 
-**Submitted to:** Assoc. Prof. Rachel A. Nayre
+- Acerden, Chelley Maxenne R.
+- Atienza, Caryl Joy A.
+- Democer, Sean Carlo D.
+- Fernandez, Rico G.
+- Gillegao, Arabella Liss R.
+- Lazaro, Troy Lauren T.
+- Mejorada, Ayen V.
+- Ramos, Shawn Angel S.
+- Tamayo, Francis John M.
+
+**Submitted to:**  
+**Assoc. Prof. Rachel A. Nayre**
