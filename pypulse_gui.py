@@ -236,14 +236,16 @@ class PyPulseApp:
 
         vsb = ttk.Scrollbar(container, orient="vertical")
         hsb = ttk.Scrollbar(container, orient="horizontal")
-        height = max(len(dataframe), 1) if compact else 10
+        row_count = max(len(dataframe), 1)
+        height = min(row_count, 16) if compact else 10
         tree = ttk.Treeview(container, yscrollcommand=vsb.set, xscrollcommand=hsb.set,
                             selectmode="none", height=height)
         vsb.config(command=tree.yview)
         hsb.config(command=tree.xview)
         tree.grid(row=0, column=0, sticky="ew" if compact else "nsew")
-        if not compact:
+        if not compact or row_count > height:
             vsb.grid(row=0, column=1, sticky="ns")
+        if not compact:
             hsb.grid(row=1, column=0, sticky="ew")
 
         default_widths = {
