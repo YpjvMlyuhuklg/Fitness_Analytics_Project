@@ -123,9 +123,9 @@ class PyPulseApp:
                              foreground="white", relief="flat", padding=[12, 6])
         self.style.map("Primary.TButton", background=[("active", "#0EA5E9"), ("disabled", "#94A3B8")])
         self.style.configure("TLabel", background=self.c_bg, foreground=self.c_text, font=("Segoe UI", 10))
-        self.style.configure("Treeview", font=("Segoe UI", 9), background=self.c_card,
-                             fieldbackground=self.c_card, rowheight=26, borderwidth=0)
-        self.style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background=self.c_bg,
+        self.style.configure("Treeview", font=("Segoe UI", 10), background=self.c_card,
+                             fieldbackground=self.c_card, rowheight=31, borderwidth=0)
+        self.style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), background=self.c_bg,
                              foreground=self.c_text, borderwidth=0, relief="flat")
         self.style.map("Treeview", background=[("selected", "#F0F9FF")], foreground=[("selected", "#0284C7")])
 
@@ -216,23 +216,33 @@ class PyPulseApp:
         self.search_entry.focus_set()
         self.filter_treeview()
 
-    def _treeview_from_df(self, parent, dataframe, left_align=("activity_type", "gender", "statistic", "relationship", "interpretation", "risk_reason"), col_widths=None):
+    def _treeview_from_df(
+        self,
+        parent,
+        dataframe,
+        left_align=("activity_type", "gender", "statistic", "relationship", "interpretation", "risk_reason"),
+        col_widths=None,
+        compact=False,
+    ):
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=0 if compact else 1)
 
         container = ttk.Frame(parent)
-        container.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        container.grid(row=0, column=0, sticky="ew" if compact else "nsew", padx=8, pady=8)
         container.columnconfigure(0, weight=1)
-        container.rowconfigure(0, weight=1)
+        container.rowconfigure(0, weight=0 if compact else 1)
 
         vsb = ttk.Scrollbar(container, orient="vertical")
         hsb = ttk.Scrollbar(container, orient="horizontal")
-        tree = ttk.Treeview(container, yscrollcommand=vsb.set, xscrollcommand=hsb.set, selectmode="none")
+        height = max(len(dataframe), 1) if compact else 10
+        tree = ttk.Treeview(container, yscrollcommand=vsb.set, xscrollcommand=hsb.set,
+                            selectmode="none", height=height)
         vsb.config(command=tree.yview)
         hsb.config(command=tree.xview)
-        tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
+        tree.grid(row=0, column=0, sticky="ew" if compact else "nsew")
+        if not compact:
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, sticky="ew")
 
         default_widths = {
             "relationship": 220, "interpretation": 420, "r_val": 80, "expected": 110,
@@ -247,7 +257,8 @@ class PyPulseApp:
             label = COL_LABELS.get(col, col.replace("_", " ").title())
             tree.heading(col, text=label)
             width = col_widths.get(col, default_widths.get(col, 110))
-            tree.column(col, width=width, minwidth=70, stretch=col in ("interpretation", "risk_reason"),
+            stretch_cols = ("interpretation", "risk_reason") if not compact else ()
+            tree.column(col, width=width, minwidth=70, stretch=col in stretch_cols,
                         anchor="w" if col in left_align else "center")
         for _, row in dataframe.iterrows():
             tree.insert("", "end", values=[format_display_value(c, row[c]) for c in cols])
@@ -412,7 +423,16 @@ class PyPulseApp:
         for col in cols:
             label = COL_LABELS.get(col, col.replace("_", " ").title())
             self.tree.heading(col, text=label, command=lambda c=col: self.sort_treeview_column(c))
-            width = 115 if col in ("date", "activity_type") else 95 if col in ("participant_id", "gender") else 125
+            width = {
+                "participant_id": 95,
+                "date": 115,
+                "gender": 90,
+                "activity_type": 130,
+                "avg_heart_rate": 145,
+                "calories_burned": 155,
+                "daily_steps": 120,
+                "sleep_hours": 110,
+            }.get(col, 125)
             self.tree.column(col, width=width, anchor="center")
         for _, row in dataframe.iterrows():
             values = []
@@ -512,6 +532,18 @@ class PyPulseApp:
                  anchor="w").pack(anchor="w")
         return chip
 
+    def _small_info_card(self, parent, title, value, caption, color):
+        card = tk.Frame(parent, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
+        self._card_hover(card)
+        tk.Frame(card, bg=color, height=4).pack(fill=tk.X)
+        tk.Label(card, text=title, font=("Segoe UI", 11, "bold"), fg=self.c_primary,
+                 bg=self.c_card, anchor="w").pack(anchor="w", padx=14, pady=(12, 4))
+        tk.Label(card, text=value, font=("Segoe UI", 20, "bold"), fg=color,
+                 bg=self.c_card, anchor="w").pack(anchor="w", padx=14)
+        tk.Label(card, text=caption, font=("Segoe UI", 9), fg="#64748B", bg=self.c_card,
+                 anchor="w", justify="left", wraplength=190).pack(anchor="w", padx=14, pady=(4, 12))
+        return card
+
     def draw_stakeholder_insights(self):
         self._clear(self.stats_insights)
         insights = build_stakeholder_insights(self.stats)
@@ -573,38 +605,55 @@ class PyPulseApp:
 
     def draw_descriptive_stats_table(self):
         self._clear(self.stats_desc)
-        self._subtitle(self.stats_desc, "Mean, median, mode, spread, and range for each tracked health variable.")
-        table_frame = tk.Frame(self.stats_desc, bg=self.c_card,
-                               highlightbackground=self.c_border, highlightthickness=1)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
-        table_frame.columnconfigure(0, weight=1)
-        table_frame.rowconfigure(0, weight=1)
+        self._subtitle(self.stats_desc, "Quick statistical profile for each tracked health variable.")
 
-        rows = []
-        col_short = {
-            "duration_minutes": "duration",
-            "calories_burned": "calories",
-            "daily_steps": "steps",
-            "avg_heart_rate": "heart_rate",
-            "sleep_hours": "sleep",
-        }
-        stat_labels = {
-            "mean": "Mean", "median": "Median", "mode": "Mode",
-            "std": "Std Dev", "min": "Minimum", "max": "Maximum",
-        }
-        for stat_key, stat_label in stat_labels.items():
-            row = {"statistic": stat_label}
-            for col in NUMERIC_COLS:
-                val = self.stats["descriptive"][col][stat_key]
-                row[col_short[col]] = f"{val:,.2f}" if isinstance(val, (int, float)) else "N/A"
-            rows.append(row)
+        desc = self.stats["descriptive"]
+        variables = [
+            ("Duration", "duration_minutes", "min", "#0F766E"),
+            ("Calories", "calories_burned", "kcal", "#55A868"),
+            ("Daily Steps", "daily_steps", "steps", "#4C72B0"),
+            ("Heart Rate", "avg_heart_rate", "bpm", "#C44E52"),
+            ("Sleep", "sleep_hours", "hrs", "#8172B2"),
+        ]
 
-        desc_df = pd.DataFrame(rows)
-        self._treeview_from_df(table_frame, desc_df)
+        grid = ttk.Frame(self.stats_desc)
+        grid.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 10))
+        grid.columnconfigure((0, 1, 2), weight=1, uniform="desc")
+        grid.rowconfigure((0, 1), weight=1, uniform="desc")
+
+        for idx, (title, key, unit, color) in enumerate(variables):
+            row, col = divmod(idx, 3)
+            values = desc[key]
+            card = tk.Frame(grid, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
+            card.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
+            self._card_hover(card)
+            tk.Frame(card, bg=color, height=5).pack(fill=tk.X)
+            tk.Label(card, text=title, font=("Segoe UI", 13, "bold"), fg=color, bg=self.c_card,
+                     anchor="w").pack(anchor="w", padx=16, pady=(14, 4))
+            tk.Label(card, text=f"{values['mean']:,.2f} {unit}", font=("Segoe UI", 21, "bold"),
+                     fg=self.c_primary, bg=self.c_card, anchor="w").pack(anchor="w", padx=16)
+            tk.Label(card, text="mean", font=("Segoe UI", 9), fg="#64748B", bg=self.c_card,
+                     anchor="w").pack(anchor="w", padx=16, pady=(0, 10))
+
+            details = tk.Frame(card, bg=self.c_card)
+            details.pack(fill=tk.X, padx=16, pady=(0, 14))
+            detail_rows = [
+                ("Median", f"{values['median']:,.2f}"),
+                ("Mode", f"{values['mode']:,.2f}" if values["mode"] is not None else "N/A"),
+                ("Std Dev", f"{values['std']:,.2f}"),
+                ("Range", f"{values['min']:,.2f} - {values['max']:,.2f}"),
+            ]
+            for label, value in detail_rows:
+                line = tk.Frame(details, bg=self.c_card)
+                line.pack(fill=tk.X, pady=1)
+                tk.Label(line, text=label, font=("Segoe UI", 9, "bold"), fg="#475569",
+                         bg=self.c_card, anchor="w", width=9).pack(side=tk.LEFT)
+                tk.Label(line, text=value, font=("Segoe UI", 9), fg=self.c_text,
+                         bg=self.c_card, anchor="w").pack(side=tk.LEFT)
 
     def draw_benchmark_cards(self):
         self._clear(self.stats_cards)
-        self._subtitle(self.stats_cards, "Share of sessions that meet each recognized health threshold.")
+        self._subtitle(self.stats_cards, "Session-level percentages against recognized health thresholds.")
         cards_container = ttk.Frame(self.stats_cards)
         cards_container.pack(fill=tk.X, padx=12, pady=(0, 4))
 
@@ -641,8 +690,8 @@ class PyPulseApp:
              f"{pcts['high_intensity_pct']:.0f}% of sessions reach the vigorous zone "
              f"(HR ≥ {HIGH_INTENSITY_HR} bpm) and {pcts['high_calorie_pct']:.0f}% burn at least {HIGH_CALORIE} kcal."),
             ("Steps are the weak spot", "#4C72B0",
-             f"Only {step['participant_pct_met']:.0f}% of participants average the {STEP_BENCHMARK:,}-step goal, "
-             f"so daily movement is the clearest area to improve."),
+             f"Only {step['participant_pct_met']:.0f}% of participants average the {STEP_BENCHMARK:,}-step goal. "
+             f"That is a participant-level measure; the blue KPI above is session-level."),
             ("Sleep drives recovery", "#E2B13C",
              f"{pcts['low_sleep_pct']:.0f}% of sessions follow nights under {LOW_SLEEP_HOURS} hrs of sleep; "
              f"sleep and heart rate move together (r = {r_sleep_hr:.2f}), so short sleep raises heart rate during activity."),
@@ -677,24 +726,49 @@ class PyPulseApp:
     def draw_correlation_table(self):
         self._clear(self.stats_corr)
         self._subtitle(self.stats_corr, "Pearson correlations supporting activity, sleep, and cardiovascular patterns.")
-        table_frame = tk.Frame(self.stats_corr, bg=self.c_card,
-                               highlightbackground=self.c_border, highlightthickness=1)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
-        table_frame.columnconfigure(0, weight=1)
-        table_frame.rowconfigure(0, weight=1)
 
         corr = self.stats["correlation_matrix"]
-        rows = [
-            ("Workout Duration vs Calories", corr.loc["duration_minutes", "calories_burned"],
-             "Positive (+)", "Longer sessions burn more calories."),
-            ("Sleep Hours vs Heart Rate", corr.loc["sleep_hours", "avg_heart_rate"],
-             "Negative (-)", "Less sleep aligns with higher heart rate during activity."),
-            ("Daily Steps vs Calories", corr.loc["daily_steps", "calories_burned"],
-             "Positive (+)", "More steps align with higher calorie output."),
+        cards = [
+            ("Duration vs Calories", corr.loc["duration_minutes", "calories_burned"],
+             "moderate positive", "Longer workouts usually burn more calories.", "#55A868"),
+            ("Sleep vs Heart Rate", corr.loc["sleep_hours", "avg_heart_rate"],
+             "weak negative", "Shorter sleep tends to align with higher workout heart rate.", "#E2B13C"),
+            ("Steps vs Calories", corr.loc["daily_steps", "calories_burned"],
+             "very weak positive", "Daily steps help, but activity type still explains much of calorie burn.", "#4C72B0"),
         ]
-        corr_df = pd.DataFrame(rows, columns=["relationship", "r_val", "expected", "interpretation"])
-        corr_df["r_val"] = corr_df["r_val"].map(lambda x: f"{x:.3f}")
-        self._treeview_from_df(table_frame, corr_df, left_align=("relationship", "interpretation"))
+
+        grid = ttk.Frame(self.stats_corr)
+        grid.pack(fill=tk.X, anchor="n", padx=12, pady=(0, 10))
+        grid.columnconfigure((0, 1, 2), weight=1, uniform="corr")
+        for idx, (title, value, label, body, color) in enumerate(cards):
+            card = tk.Frame(grid, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
+            card.grid(row=0, column=idx, sticky="nsew", padx=6, pady=6)
+            self._card_hover(card)
+            tk.Frame(card, bg=color, height=5).pack(fill=tk.X)
+            tk.Label(card, text=title, font=("Segoe UI", 13, "bold"), fg=color,
+                     bg=self.c_card, anchor="w").pack(anchor="w", padx=18, pady=(18, 8))
+            tk.Label(card, text=f"r = {value:.3f}", font=("Segoe UI", 28, "bold"), fg=self.c_primary,
+                     bg=self.c_card, anchor="w").pack(anchor="w", padx=18)
+            tk.Label(card, text=label, font=("Segoe UI", 10, "bold"), fg="#64748B",
+                     bg=self.c_card, anchor="w").pack(anchor="w", padx=18, pady=(0, 14))
+            body_lbl = tk.Label(card, text=body, font=("Segoe UI", 11), fg="#334155",
+                                bg=self.c_card, anchor="w", justify="left", wraplength=280)
+            body_lbl.pack(anchor="w", fill=tk.X, padx=18, pady=(0, 18))
+            card.bind("<Configure>",
+                      lambda e, lbl=body_lbl: lbl.config(wraplength=max(e.width - 44, 220)))
+
+    def _group_summary_view(self, parent, dataframe, cards, col_widths=None):
+        header = ttk.Frame(parent)
+        header.pack(fill=tk.X, padx=12, pady=(10, 2))
+        header.columnconfigure((0, 1, 2), weight=1, uniform="summary_cards")
+        for idx, (title, value, caption, color) in enumerate(cards):
+            card = self._small_info_card(header, title, value, caption, color)
+            card.grid(row=0, column=idx, sticky="nsew", padx=6)
+
+        table_frame = tk.Frame(parent, bg=self.c_card,
+                               highlightbackground=self.c_border, highlightthickness=1)
+        table_frame.pack(fill=tk.X, padx=18, pady=12)
+        self._treeview_from_df(table_frame, dataframe, col_widths=col_widths, compact=True)
 
     def draw_group_summary_tables(self):
         self._clear(self.stats_group)
@@ -711,9 +785,49 @@ class PyPulseApp:
         sub_notebook.add(tab_eff, text=" By Efficiency ")
         sub_notebook.add(tab_gen, text=" By Gender ")
 
-        self._treeview_from_df(tab_act, self.stats["activity_summary"])
-        self._treeview_from_df(tab_eff, self.stats["activity_by_efficiency"])
-        self._treeview_from_df(tab_gen, self.stats["gender_summary"])
+        activity = self.stats["activity_summary"]
+        efficient = self.stats["activity_by_efficiency"]
+        gender = self.stats["gender_summary"]
+        top_activity = activity.iloc[0]
+        top_eff = efficient.iloc[0]
+        top_gender = gender.sort_values("avg_calories", ascending=False).iloc[0]
+        common_widths = {
+            "activity_type": 130,
+            "sessions": 85,
+            "total_calories": 120,
+            "avg_calories": 115,
+            "avg_duration": 110,
+            "avg_steps": 105,
+            "avg_heart_rate": 115,
+            "avg_sleep": 110,
+            "calories_per_minute": 135,
+        }
+
+        self._group_summary_view(tab_act, activity, [
+            ("Top Burn", f"{top_activity['avg_calories']:.0f} kcal", str(top_activity["activity_type"]), "#55A868"),
+            ("Logged Sessions", f"{int(activity['sessions'].sum()):,}", "total activity records", "#4C72B0"),
+            ("Activity Types", f"{len(activity)}", "categories tracked", "#0F766E"),
+        ], col_widths=common_widths)
+
+        self._group_summary_view(tab_eff, efficient, [
+            ("Most Efficient", f"{top_eff['calories_per_minute']:.1f}/min", str(top_eff["activity_type"]), "#C44E52"),
+            ("Avg Duration", f"{top_eff['avg_duration']:.0f} min", "for the top activity", "#8172B2"),
+            ("Avg Calories", f"{top_eff['avg_calories']:.0f} kcal", "for the top activity", "#55A868"),
+        ], col_widths=common_widths)
+
+        self._group_summary_view(tab_gen, gender, [
+            ("Higher Avg Burn", f"{top_gender['avg_calories']:.0f} kcal", str(top_gender["gender"]), "#55A868"),
+            ("Female Logs", f"{int(gender.loc[gender['gender'] == 'Female', 'sessions'].iloc[0]):,}", "sessions", "#C44E52"),
+            ("Male Logs", f"{int(gender.loc[gender['gender'] == 'Male', 'sessions'].iloc[0]):,}", "sessions", "#4C72B0"),
+        ], col_widths={
+            "gender": 120,
+            "sessions": 95,
+            "total_calories": 140,
+            "avg_calories": 130,
+            "avg_steps": 125,
+            "avg_sleep": 125,
+            "avg_heart_rate": 135,
+        })
 
     def draw_at_risk_table(self):
         self._clear(self.stats_risk)
@@ -731,7 +845,13 @@ class PyPulseApp:
         table_frame.rowconfigure(0, weight=1)
         if count:
             cols = ["participant_id", "avg_steps", "avg_sleep", "total_sessions", "risk_reason"]
-            self._treeview_from_df(table_frame, at_risk[cols])
+            self._treeview_from_df(table_frame, at_risk[cols], compact=True, col_widths={
+                "participant_id": 110,
+                "avg_steps": 130,
+                "avg_sleep": 130,
+                "total_sessions": 130,
+                "risk_reason": 260,
+            })
         else:
             tk.Label(table_frame, text="No participants flagged at current thresholds.",
                      font=("Segoe UI", 11, "italic"), fg="#64748B", bg=self.c_card).pack(pady=40)
