@@ -17,6 +17,22 @@ def _to_numeric(df):
     return df
 
 
+def _parse_date(value):
+    s = str(value).strip()
+    parts = s.split("/")
+    if len(parts) == 3:
+        a, b = int(parts[0]), int(parts[1])
+        if a > 12:
+            return pd.to_datetime(s, dayfirst=True, errors="coerce")
+        if b > 12:
+            return pd.to_datetime(s, dayfirst=False, errors="coerce")
+        result = pd.to_datetime(s, dayfirst=True, errors="coerce")
+        if result is not pd.NaT and result.month <= 3:
+            return result
+        return pd.to_datetime(s, dayfirst=False, errors="coerce")
+    return pd.to_datetime(s, errors="coerce")
+
+
 def clean_fitness_data(input_file, output_file):
     print("Loading data...")
     df = pd.read_csv(input_file)
@@ -25,7 +41,7 @@ def clean_fitness_data(input_file, output_file):
     df = df.drop_duplicates()
 
     print("Cleaning dates...")
-    df["date"] = pd.to_datetime(df["date"], errors="coerce", format="mixed")
+    df["date"] = df["date"].map(_parse_date)
     df = df.dropna(subset=["date"])
 
     print("Standardizing categorical fields...")
