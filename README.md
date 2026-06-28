@@ -10,7 +10,8 @@ Developed for CCIS *INTE 202 - Integrative Programming and Technologies* at the 
 
 1. **Data Preprocessing & Cleaning**:
    - Automatic record deduplication.
-   - Mixed-format date normalization into standard datetimes.
+   - Mixed-format date normalization into **YYYY-MM-DD** (handles DD/MM vs MM/DD ambiguity and text dates like `February 3, 2026`).
+   - Study window: January–March 2025.
    - String normalization for categorical attributes (Gender spelling mappings, typo corrections like 'Runing' $\rightarrow$ 'Running').
    - Outlier detection and replacement with median values (handling invalid workout durations of 450 minutes, negative daily steps, and heart rates exceeding 250 bpm).
 
@@ -39,11 +40,13 @@ Developed for CCIS *INTE 202 - Integrative Programming and Technologies* at the 
 
 * `pypulse_gui.py`: Main Tkinter graphical application entry point.
 * `cleaning.py`: Standalone script containing the cleaning pipeline.
+* `date_filter_sort.py`: Parses mixed raw dates, filters Jan–Mar, sorts by date.
+* `normalize_raw_dates.py`: Rewrites the raw CSV dates to YYYY-MM-DD (2025).
 * `fitness_analytics_stats.py`: Computes descriptive and grouped analytical dataframes.
 * `fitness_analytics_viz.py`: Matplotlib visual generation wrapper.
 * `eda.py`: Initial raw CSV Exploratory Data Analysis.
-* `Group4_FitnessAnalytics_raw.csv`: Raw, noisy fitness dataset (615 rows).
-* `Group4_FitnessAnalytics_cleaned.csv`: Standardized, cleaned dataset output (599 rows).
+* `Group4_FitnessAnalytics_raw.csv`: Raw, noisy fitness dataset (615 rows). **Only CSV shipped with the project.**
+* `Group4_FitnessAnalytics_cleaned.csv`: Generated when you click **Run Clean & Deduplication** in the GUI (sorted by participant + date).
 
 ---
 
