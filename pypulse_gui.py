@@ -5,7 +5,7 @@ import pandas as pd
 import PIL.Image
 import PIL.ImageTk
 
-from cleaning import clean_fitness_data
+from cleaning import GENDER_MAP, clean_fitness_data
 from fitness_analytics_stats import (
     compute_all_statistics,
     build_summary_report,
@@ -21,13 +21,58 @@ from fitness_analytics_stats import (
 )
 from fitness_analytics_viz import show_all_charts
 
+SEARCH_PLACEHOLDER = "Search Participant / Activity..."
+
+
+def _standardize_activity_label(value):
+    text = str(value).strip().title().replace("Runing", "Running")
+    return "HIIT" if text == "Hiit" else text
+
+
+def compute_quality_metrics(raw_df):
+    """Read-only UI metrics derived from the raw CSV (does not mutate data)."""
+    work = raw_df.copy()
+    missing_values = 0
+    for col in NUMERIC_COLS:
+        if col not in work.columns:
+            continue
+        series = work[col].replace(r"^\s*$", pd.NA, regex=True)
+        missing_values += int(series.isna().sum())
+
+    duplicate_rows = len(work) - len(work.drop_duplicates())
+
+    inconsistent_labels = 0
+    if "gender" in work.columns:
+        for value in work["gender"]:
+            raw = str(value).strip()
+            if raw.lower() in ("nan", "none", ""):
+                continue
+            standardized = GENDER_MAP.get(raw, raw)
+            if standardized != raw:
+                inconsistent_labels += 1
+
+    if "activity_type" in work.columns:
+        for value in work["activity_type"]:
+            raw = str(value).strip()
+            if raw.lower() in ("nan", "none", ""):
+                continue
+            if _standardize_activity_label(raw) != raw:
+                inconsistent_labels += 1
+
+    return {
+        "missing_values": missing_values,
+        "duplicate_rows": duplicate_rows,
+        "inconsistent_labels": inconsistent_labels,
+    }
+
 
 class PyPulseApp:
     def __init__(self, root):
         self.root = root
         self.root.title("PyPulse: Health & Fitness Tracking Analytics")
-        self.root.geometry("1200x800")
+        self.root.geometry("1280x860")
         self.root.minsize(1000, 700)
+        self.search_has_placeholder = False
 
         self.style = ttk.Style()
         self.configure_styles()
@@ -52,10 +97,21 @@ class PyPulseApp:
 
         self.root.configure(bg=self.c_bg)
         self.style.theme_use("clam")
-        self.style.configure("TNotebook", background=self.c_bg, borderwidth=0)
-        self.style.configure("TNotebook.Tab", background=self.c_bg, foreground="#64748B",
-                             padding=[18, 8], font=("Segoe UI", 10, "bold"), borderwidth=0)
-        self.style.map("TNotebook.Tab", background=[("selected", self.c_bg)], foreground=[("selected", self.c_sky)])
+        self.style.configure("TNotebook", background=self.c_bg, borderwidth=0, tabmargins=[4, 4, 4, 0])
+        self.style.configure(
+            "TNotebook.Tab",
+            background="#E2E8F0",
+            foreground="#64748B",
+            padding=[22, 10],
+            font=("Segoe UI", 10, "bold"),
+            borderwidth=0,
+        )
+        self.style.map(
+            "TNotebook.Tab",
+            background=[("selected", self.c_card), ("active", "#CBD5E1")],
+            foreground=[("selected", self.c_secondary), ("active", self.c_primary)],
+            expand=[("selected", [1, 1, 1, 0])],
+        )
         self.style.configure("TFrame", background=self.c_bg)
         self.style.configure("TButton", font=("Segoe UI", 9, "bold"), background=self.c_bg,
                              foreground=self.c_text, borderwidth=1, relief="flat", padding=[12, 6])
@@ -72,17 +128,35 @@ class PyPulseApp:
         self.style.map("Treeview", background=[("selected", "#F0F9FF")], foreground=[("selected", "#0284C7")])
 
     def create_layout(self):
-        header = tk.Frame(self.root, bg=self.c_card, height=65,
-                          highlightbackground=self.c_border, highlightthickness=1)
+        header_wrap = tk.Frame(self.root, bg=self.c_card,
+                               highlightbackground=self.c_border, highlightthickness=1)
+        header_wrap.pack(fill=tk.X)
+
+        tk.Frame(header_wrap, bg=self.c_secondary, height=4).pack(fill=tk.X)
+
+        header = tk.Frame(header_wrap, bg=self.c_card, height=90)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
-        tk.Label(header, text="PyPulse Health & Fitness Analytics Dashboard",
-                 font=("Segoe UI", 15, "bold"), fg=self.c_primary, bg=self.c_card).pack(side=tk.LEFT, padx=20, pady=15)
-        tk.Label(header, text="Integrative Programming Project (Group 4)",
-                 font=("Segoe UI", 10, "italic"), fg="#64748B", bg=self.c_card).pack(side=tk.LEFT, padx=10, pady=20)
+
+        title_block = tk.Frame(header, bg=self.c_card)
+        title_block.pack(expand=True)
+        tk.Label(
+            title_block,
+            text="PyPulse Health & Fitness Analytics Dashboard",
+            font=("Segoe UI", 20, "bold"),
+            fg=self.c_secondary,
+            bg=self.c_card,
+        ).pack(anchor="center", pady=(16, 2))
+        tk.Label(
+            title_block,
+            text="Integrative Programming Project (Group 4)",
+            font=("Segoe UI", 10, "italic"),
+            fg="#64748B",
+            bg=self.c_card,
+        ).pack(anchor="center", pady=(0, 12))
 
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         self.tab_data = ttk.Frame(self.notebook)
         self.tab_stats = ttk.Frame(self.notebook)
@@ -108,14 +182,44 @@ class PyPulseApp:
 
     def _subtitle(self, parent, text):
         tk.Label(parent, text=text, font=("Segoe UI", 10), fg="#64748B",
-                 bg=self.c_bg, wraplength=900, justify="left").pack(anchor="w", padx=20, pady=(0, 12))
+                 bg=self.c_bg, wraplength=900, justify="left").pack(anchor="w", padx=12, pady=(0, 10))
+
+    def _setup_search_placeholder(self, entry):
+        self.search_has_placeholder = True
+        self.search_val.set(SEARCH_PLACEHOLDER)
+        entry.configure(foreground="#94A3B8")
+
+        def on_focus_in(_event):
+            if self.search_has_placeholder:
+                self.search_val.set("")
+                entry.configure(foreground=self.c_text)
+                self.search_has_placeholder = False
+
+        def on_focus_out(_event):
+            if not self.search_val.get().strip():
+                self._show_search_placeholder()
+
+        entry.bind("<FocusIn>", on_focus_in)
+        entry.bind("<FocusOut>", on_focus_out)
+
+    def _show_search_placeholder(self):
+        self.search_has_placeholder = True
+        self.search_val.set(SEARCH_PLACEHOLDER)
+        self.search_entry.configure(foreground="#94A3B8")
+
+    def _clear_search(self):
+        self.search_val.set("")
+        self.search_has_placeholder = False
+        self.search_entry.configure(foreground=self.c_text)
+        self.search_entry.focus_set()
+        self.filter_treeview()
 
     def _treeview_from_df(self, parent, dataframe, left_align=("activity_type", "gender", "statistic", "relationship", "interpretation", "risk_reason"), col_widths=None):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
 
         container = ttk.Frame(parent)
-        container.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        container.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         container.columnconfigure(0, weight=1)
         container.rowconfigure(0, weight=1)
 
@@ -153,10 +257,10 @@ class PyPulseApp:
         self.tab_data.rowconfigure(0, weight=1)
 
         ctrl_frame = ttk.Frame(self.tab_data)
-        ctrl_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        ctrl_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
         load_card = tk.Frame(ctrl_frame, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
-        load_card.pack(fill=tk.X, padx=5, pady=5)
+        load_card.pack(fill=tk.X, padx=4, pady=4)
         tk.Label(load_card, text="1. Load Raw Dataset", font=("Segoe UI", 12, "bold"),
                  fg=self.c_primary, bg=self.c_card).pack(anchor="w", padx=15, pady=10)
 
@@ -166,7 +270,7 @@ class PyPulseApp:
             anchor="e", padx=15, pady=(0, 12))
 
         clean_card = tk.Frame(ctrl_frame, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
-        clean_card.pack(fill=tk.X, padx=5, pady=10)
+        clean_card.pack(fill=tk.X, padx=4, pady=8)
         tk.Label(clean_card, text="2. Data Preprocessing", font=("Segoe UI", 12, "bold"),
                  fg=self.c_primary, bg=self.c_card).pack(anchor="w", padx=15, pady=10)
         ttk.Button(clean_card, text="Run Clean & Deduplication",
@@ -183,26 +287,44 @@ class PyPulseApp:
         for lbl in (self.lbl_orig_rows, self.lbl_clean_rows, self.lbl_deleted_rows):
             lbl.pack(anchor="w", pady=2)
 
+        quality_card = tk.Frame(ctrl_frame, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
+        quality_card.pack(fill=tk.X, padx=4, pady=8)
+        tk.Label(quality_card, text="Data Quality Summary", font=("Segoe UI", 12, "bold"),
+                 fg=self.c_secondary, bg=self.c_card).pack(anchor="w", padx=15, pady=(12, 8))
+
+        self.quality_stats_frame = tk.Frame(quality_card, bg=self.c_card)
+        self.quality_stats_frame.pack(fill=tk.X, padx=15, pady=(0, 12))
+        self.lbl_missing_fixed = tk.Label(
+            self.quality_stats_frame, text="Missing Values Fixed: N/A",
+            font=("Segoe UI", 9), bg=self.c_card, fg="#475569")
+        self.lbl_dupes_removed = tk.Label(
+            self.quality_stats_frame, text="Duplicate Rows Removed: N/A",
+            font=("Segoe UI", 9), bg=self.c_card, fg="#475569")
+        self.lbl_labels_fixed = tk.Label(
+            self.quality_stats_frame, text="Inconsistent Labels Fixed: N/A",
+            font=("Segoe UI", 9), bg=self.c_card, fg="#475569")
+        for lbl in (self.lbl_missing_fixed, self.lbl_dupes_removed, self.lbl_labels_fixed):
+            lbl.pack(anchor="w", pady=3)
+
         preview_frame = tk.Frame(self.tab_data, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
-        preview_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        preview_frame.grid(row=0, column=1, sticky="nsew", padx=6, pady=6)
 
         preview_header = tk.Frame(preview_frame, bg=self.c_card)
-        preview_header.pack(fill=tk.X, padx=15, pady=10)
+        preview_header.pack(fill=tk.X, padx=12, pady=8)
         tk.Label(preview_header, text="Cleaned Dataset Preview", font=("Segoe UI", 12, "bold"),
                  fg=self.c_primary, bg=self.c_card).pack(side=tk.LEFT)
 
         search_frame = tk.Frame(preview_header, bg=self.c_card)
         search_frame.pack(side=tk.RIGHT)
-        tk.Label(search_frame, text="Search:", font=("Segoe UI", 9, "bold"),
-                 bg=self.c_card, fg="#475569").pack(side=tk.LEFT, padx=5)
         self.search_val = tk.StringVar()
         self.search_val.trace_add("write", lambda *_: self.filter_treeview())
-        ttk.Entry(search_frame, textvariable=self.search_val, width=25).pack(side=tk.LEFT, padx=5)
-        ttk.Button(search_frame, text="Clear", width=6,
-                   command=lambda: self.search_val.set("")).pack(side=tk.LEFT, padx=5)
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_val, width=32, font=("Segoe UI", 9))
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+        self._setup_search_placeholder(self.search_entry)
+        ttk.Button(search_frame, text="Clear", width=6, command=self._clear_search).pack(side=tk.LEFT, padx=5)
 
         tree_container = ttk.Frame(preview_frame)
-        tree_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        tree_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
         vsb = ttk.Scrollbar(tree_container, orient="vertical")
         hsb = ttk.Scrollbar(tree_container, orient="horizontal")
         self.tree = ttk.Treeview(tree_container, yscrollcommand=vsb.set, xscrollcommand=hsb.set, selectmode="browse")
@@ -213,7 +335,7 @@ class PyPulseApp:
         self.tree.pack(fill=tk.BOTH, expand=True)
         self.tree["show"] = "headings"
 
-        for card in (load_card, clean_card, preview_frame):
+        for card in (load_card, clean_card, quality_card, preview_frame):
             self._card_hover(card)
 
     def browse_raw_file(self):
@@ -228,7 +350,14 @@ class PyPulseApp:
         try:
             self.df = pd.read_csv(self.cleaned_filepath.get())
             self.df["date"] = pd.to_datetime(self.df["date"])
-            orig_len = len(pd.read_csv(self.raw_filepath.get())) if os.path.exists(self.raw_filepath.get()) else "N/A"
+            raw_path = self.raw_filepath.get()
+            if os.path.exists(raw_path):
+                raw_df = pd.read_csv(raw_path)
+                orig_len = len(raw_df)
+                self.update_quality_labels(raw_df)
+            else:
+                orig_len = "N/A"
+                self.update_quality_labels(None)
             self.update_cleaning_stats_labels(orig_len, len(self.df))
             self.populate_treeview(self.df)
             self.run_analytics_pipeline()
@@ -242,7 +371,9 @@ class PyPulseApp:
             messagebox.showerror("File Error", f"The raw file '{raw_path}' does not exist.")
             return
         try:
-            original_len = len(pd.read_csv(raw_path))
+            raw_df = pd.read_csv(raw_path)
+            original_len = len(raw_df)
+            self.update_quality_labels(raw_df)
             clean_fitness_data(raw_path, cleaned_path)
             self.df = pd.read_csv(cleaned_path)
             self.df["date"] = pd.to_datetime(self.df["date"])
@@ -260,6 +391,17 @@ class PyPulseApp:
             self.lbl_deleted_rows.config(text=f"Removed Records: {original_count - cleaned_count}")
         else:
             self.lbl_deleted_rows.config(text="Removed Records: N/A")
+
+    def update_quality_labels(self, raw_df):
+        if raw_df is None:
+            self.lbl_missing_fixed.config(text="Missing Values Fixed: N/A")
+            self.lbl_dupes_removed.config(text="Duplicate Rows Removed: N/A")
+            self.lbl_labels_fixed.config(text="Inconsistent Labels Fixed: N/A")
+            return
+        metrics = compute_quality_metrics(raw_df)
+        self.lbl_missing_fixed.config(text=f"Missing Values Fixed: {metrics['missing_values']}")
+        self.lbl_dupes_removed.config(text=f"Duplicate Rows Removed: {metrics['duplicate_rows']}")
+        self.lbl_labels_fixed.config(text=f"Inconsistent Labels Fixed: {metrics['inconsistent_labels']}")
 
     def populate_treeview(self, dataframe):
         self.tree.delete(*self.tree.get_children())
@@ -284,8 +426,11 @@ class PyPulseApp:
     def filter_treeview(self):
         if self.df is None:
             return
+        if self.search_has_placeholder:
+            self.populate_treeview(self.df)
+            return
         query = self.search_val.get().lower().strip()
-        if not query:
+        if not query or query == SEARCH_PLACEHOLDER.lower():
             self.populate_treeview(self.df)
             return
         mask = self.df.astype(str).apply(
@@ -325,7 +470,7 @@ class PyPulseApp:
 
     def setup_stats_tab(self):
         self.stats_notebook = ttk.Notebook(self.tab_stats)
-        self.stats_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.stats_notebook.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         self.stats_insights = ttk.Frame(self.stats_notebook)
         self.stats_desc = ttk.Frame(self.stats_notebook)
         self.stats_cards = ttk.Frame(self.stats_notebook)
@@ -356,26 +501,41 @@ class PyPulseApp:
         self._clear(self.stats_insights)
         insights = build_stakeholder_insights(self.stats)
         panels = [
-            ("Health-Conscious Individuals", insights["individuals"], "#0F766E"),
-            ("Athletic Trainers & Coaches", insights["coaches"], "#4C72B0"),
-            ("Wellness Administrators", insights["administrators"], "#C44E52"),
+            ("Health-Conscious Individuals", insights["individuals"], "#0F766E", "#ECFDF5"),
+            ("Athletic Trainers & Coaches", insights["coaches"], "#4C72B0", "#EFF6FF"),
+            ("Wellness Administrators", insights["administrators"], "#C44E52", "#FEF2F2"),
         ]
         wrapper = ttk.Frame(self.stats_insights)
-        wrapper.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
-        for idx, (title, body, color) in enumerate(panels):
-            card = tk.Frame(wrapper, bg=self.c_card, highlightbackground=self.c_border, highlightthickness=1)
-            card.pack(fill=tk.X, pady=8)
-            tk.Label(card, text=title, font=("Segoe UI", 12, "bold"), fg=color, bg=self.c_card).pack(
-                anchor="w", padx=16, pady=(12, 4))
-            tk.Label(card, text=body, font=("Segoe UI", 10), fg=self.c_text, bg=self.c_card,
-                     wraplength=980, justify="left").pack(anchor="w", padx=16, pady=(0, 14))
+        wrapper.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        for _idx, (title, body, color, tint) in enumerate(panels):
+            card = tk.Frame(wrapper, bg=self.c_card, highlightbackground=color, highlightthickness=1)
+            card.pack(fill=tk.X, pady=10)
+            self._card_hover(card)
+
+            tk.Frame(card, bg=color, height=5).pack(fill=tk.X)
+
+            inner = tk.Frame(card, bg=self.c_card)
+            inner.pack(fill=tk.X)
+
+            tk.Frame(inner, bg=color, width=6).pack(side=tk.LEFT, fill=tk.Y)
+
+            content = tk.Frame(inner, bg=tint)
+            content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0, pady=0)
+
+            tk.Label(
+                content, text=title, font=("Segoe UI", 13, "bold"), fg=color, bg=tint,
+            ).pack(anchor="w", padx=18, pady=(16, 6))
+            tk.Label(
+                content, text=body, font=("Segoe UI", 10), fg=self.c_text, bg=tint,
+                wraplength=980, justify="left",
+            ).pack(anchor="w", padx=18, pady=(0, 18))
 
     def draw_descriptive_stats_table(self):
         self._clear(self.stats_desc)
         self._subtitle(self.stats_desc, "Mean, median, mode, spread, and range for each tracked health variable.")
         table_frame = tk.Frame(self.stats_desc, bg=self.c_card,
                                highlightbackground=self.c_border, highlightthickness=1)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
 
@@ -405,7 +565,7 @@ class PyPulseApp:
         self._clear(self.stats_cards)
         self._subtitle(self.stats_cards, "Session-level percentages against recognized health thresholds.")
         cards_container = ttk.Frame(self.stats_cards)
-        cards_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+        cards_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
 
         pcts = self.stats["percentages"]
         step = self.stats["step_benchmark"]
@@ -438,7 +598,7 @@ class PyPulseApp:
         self._subtitle(self.stats_corr, "Pearson correlations supporting activity, sleep, and cardiovascular patterns.")
         table_frame = tk.Frame(self.stats_corr, bg=self.c_card,
                                highlightbackground=self.c_border, highlightthickness=1)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
 
@@ -458,7 +618,7 @@ class PyPulseApp:
     def draw_group_summary_tables(self):
         self._clear(self.stats_group)
         sub_notebook = ttk.Notebook(self.stats_group)
-        sub_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        sub_notebook.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
         tab_act = ttk.Frame(sub_notebook)
         tab_eff = ttk.Frame(sub_notebook)
@@ -485,7 +645,7 @@ class PyPulseApp:
         )
         table_frame = tk.Frame(self.stats_risk, bg=self.c_card,
                                highlightbackground=self.c_border, highlightthickness=1)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
         if count:
@@ -517,9 +677,9 @@ class PyPulseApp:
 
         self.chart_container = tk.Frame(self.tab_viz, bg=self.c_card,
                                         highlightbackground=self.c_border, highlightthickness=1)
-        self.chart_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        self.chart_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.lbl_chart = tk.Label(self.chart_container, bg=self.c_card)
-        self.lbl_chart.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.lbl_chart.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
         self.chart_container.bind("<Configure>", lambda *_: self.load_visualization_images())
 
     def select_active_chart(self, filename):
@@ -550,10 +710,10 @@ class PyPulseApp:
         self.tab_report.rowconfigure(0, weight=1)
         self.txt_report = scrolledtext.ScrolledText(self.tab_report, wrap=tk.WORD, font=("Consolas", 10),
                                                     bg=self.c_card, fg=self.c_text, relief="solid", bd=1)
-        self.txt_report.grid(row=0, column=0, sticky="nsew", padx=20, pady=(20, 10))
+        self.txt_report.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 8))
 
         actions = ttk.Frame(self.tab_report)
-        actions.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 20))
+        actions.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
         ttk.Button(actions, text="Copy Report", command=self.copy_report_to_clipboard).pack(side=tk.LEFT, padx=5)
         ttk.Button(actions, text="Save as TXT", command=self.export_report_txt).pack(side=tk.LEFT, padx=5)
         ttk.Button(actions, text="Export Cleaned CSV", command=self.export_cleaned_csv).pack(side=tk.RIGHT, padx=5)
