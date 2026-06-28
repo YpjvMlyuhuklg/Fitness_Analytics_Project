@@ -269,9 +269,10 @@ def build_stakeholder_insights(stats: dict) -> dict:
             f"Use {format_activity(eff['lowest_avg_calories']['activity_type'])} for recovery programming."
         ),
         "administrators": (
-            f"{len(at_risk)} of {step['participants_total']} participants ({100 - step['participant_pct_met']:.0f}% below step target) "
-            f"may need wellness intervention (avg steps < {STEP_BENCHMARK:,} or sleep < {LOW_SLEEP_HOURS}h). "
-            f"{pcts['low_sleep_pct']:.1f}% of sessions follow low-sleep nights."
+            f"{len(at_risk)} of {step['participants_total']} participants "
+            f"({len(at_risk) / step['participants_total'] * 100:.0f}% of the cohort) are flagged for wellness follow-up "
+            f"— averaging under {STEP_BENCHMARK:,} steps or {LOW_SLEEP_HOURS}h of sleep. "
+            f"{pcts['low_sleep_pct']:.1f}% of all sessions followed a short-sleep night."
         ),
     }
 
