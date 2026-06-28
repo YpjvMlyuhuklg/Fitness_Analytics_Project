@@ -25,5 +25,6 @@ print(df.describe())
 # Find min max and mean using .describe() to find outliers, columns that shouldn't have nagtive values
 
 print()
+print("Date column (target format after cleaning: YYYY-MM-DD):")
 print(df['date'].head(20))
-# Check date format
+# Mixed raw inputs may use DD/MM/YYYY, MM/DD/YYYY, or month-name text.

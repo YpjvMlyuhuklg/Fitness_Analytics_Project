@@ -17,6 +17,7 @@ NUMERIC_COLS = [
 ]
 
 COL_LABELS = {
+    "date": "Date (YYYY-MM-DD)",
     "duration_minutes": "Duration (min)",
     "calories_burned": "Calories Burned (kcal)",
     "daily_steps": "Daily Steps",

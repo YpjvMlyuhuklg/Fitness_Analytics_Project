@@ -1,12 +1,15 @@
 import pandas as pd
 
+from cleaning import parse_fitness_date
+
 INPUT_FILE = "Group4_FitnessAnalytics_cleaned.csv"
 OUTPUT_FILE = "Group4_FitnessAnalytics_processed.csv"
 
 pd.set_option("display.width", 120)
 
-# Load data
+# Load data (cleaned dates are YYYY-MM-DD)
 df = pd.read_csv(INPUT_FILE)
+df["date"] = df["date"].map(parse_fitness_date)
 
 print("DATA LOADED")
 print(f"Total rows: {len(df)}")

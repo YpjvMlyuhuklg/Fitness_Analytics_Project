@@ -17,11 +17,23 @@ def _to_numeric(df):
     return df
 
 
-def _parse_date(value):
+def parse_fitness_date(value):
+    """Parse mixed date inputs (DD/MM/YYYY, MM/DD/YYYY, or 'February 3, 2026').
+
+    Target storage format after cleaning is YYYY-MM-DD (ISO 8601 date).
+    Ambiguous slash dates prefer day-first when that yields Jan–Mar; otherwise month-first.
+    """
+    if pd.isna(value):
+        return pd.NaT
     s = str(value).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return pd.NaT
     parts = s.split("/")
     if len(parts) == 3:
-        a, b = int(parts[0]), int(parts[1])
+        try:
+            a, b = int(parts[0]), int(parts[1])
+        except ValueError:
+            return pd.to_datetime(s, errors="coerce")
         if a > 12:
             return pd.to_datetime(s, dayfirst=True, errors="coerce")
         if b > 12:
@@ -33,6 +45,9 @@ def _parse_date(value):
     return pd.to_datetime(s, errors="coerce")
 
 
+_parse_date = parse_fitness_date
+
+
 def clean_fitness_data(input_file, output_file):
     print("Loading data...")
     df = pd.read_csv(input_file)
@@ -41,8 +56,9 @@ def clean_fitness_data(input_file, output_file):
     df = df.drop_duplicates()
 
     print("Cleaning dates...")
-    df["date"] = df["date"].map(_parse_date)
+    df["date"] = df["date"].map(parse_fitness_date)
     df = df.dropna(subset=["date"])
+    df["date"] = df["date"].dt.strftime("%Y-%m-%d")
 
     print("Standardizing categorical fields...")
     df["gender"] = df["gender"].astype(str).str.strip().map(GENDER_MAP)
@@ -63,6 +79,7 @@ def clean_fitness_data(input_file, output_file):
     for col in NUMERIC_COLS:
         df[col] = df[col].fillna(df[col].median())
 
+    df = df.sort_values(["participant_id", "date"])
     df.to_csv(output_file, index=False)
 
     print("-" * 30)
@@ -74,4 +91,7 @@ def clean_fitness_data(input_file, output_file):
 
 
 if __name__ == "__main__":
-    clean_fitness_data("Group4_FitnessAnalytics_raw.csv", "Group4_FitnessAnalytics_cleaned.csv")
+    import sys
+    raw = sys.argv[1] if len(sys.argv) > 1 else "Group4_FitnessAnalytics_raw.csv"
+    out = sys.argv[2] if len(sys.argv) > 2 else "Group4_FitnessAnalytics_cleaned.csv"
+    clean_fitness_data(raw, out)
