@@ -138,19 +138,32 @@ class PyPulseApp:
 
         tk.Frame(header_wrap, bg=self.c_secondary, height=4).pack(fill=tk.X)
 
-        header = tk.Frame(header_wrap, bg=self.c_card, height=90)
+        header = tk.Frame(header_wrap, bg=self.c_card, height=120)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
         title_block = tk.Frame(header, bg=self.c_card)
         title_block.pack(expand=True)
+
+        try:
+            logo_img = PIL.Image.open("PyPulse.png")
+            logo_img = logo_img.resize((180, 42), PIL.Image.Resampling.LANCZOS)
+            self._logo_photo = PIL.ImageTk.PhotoImage(logo_img)
+            tk.Label(
+                title_block,
+                image=self._logo_photo,
+                bg=self.c_card,
+            ).pack(anchor="center", pady=(6, 0))
+        except Exception:
+            pass
+
         tk.Label(
             title_block,
-            text="PyPulse Health & Fitness Analytics Dashboard",
-            font=("Segoe UI", 20, "bold"),
+            text="Health & Fitness Analytics Dashboard",
+            font=("Segoe UI", 12, "bold"),
             fg=self.c_secondary,
             bg=self.c_card,
-        ).pack(anchor="center", pady=(16, 2))
+        ).pack(anchor="center", pady=(2, 2))
         tk.Label(
             title_block,
             text="Integrative Programming Project (Group 4)",
