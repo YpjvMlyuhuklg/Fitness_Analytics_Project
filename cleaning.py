@@ -64,6 +64,8 @@ def clean_fitness_data(input_file, output_file):
 
     print("Handling outliers...")
     dur_median = df.loc[df["duration_minutes"] != 450, "duration_minutes"].median()
+    if not pd.isna(dur_median):
+        dur_median = round(dur_median)
     df.loc[df["duration_minutes"] == 450, "duration_minutes"] = dur_median
 
     df.loc[df["daily_steps"] < 0, "daily_steps"] = np.nan
@@ -71,7 +73,14 @@ def clean_fitness_data(input_file, output_file):
 
     print("Filling missing values...")
     for col in NUMERIC_COLS:
-        df[col] = df[col].fillna(df[col].median())
+        median_val = df[col].median()
+        if col in ["daily_steps", "calories_burned", "duration_minutes", "avg_heart_rate"]:
+            if not pd.isna(median_val):
+                median_val = round(median_val)
+            df[col] = df[col].fillna(median_val).round(0)
+        else:
+            # sleep_hours is allowed to have decimals in real life
+            df[col] = df[col].fillna(median_val)
 
     df = df.sort_values(["participant_id", "date"])
     df.to_csv(output_file, index=False)
