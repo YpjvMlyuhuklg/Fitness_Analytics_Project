@@ -997,7 +997,7 @@ class PyPulseApp:
         image_path = os.path.join("charts", self.active_chart_file.get())
         width = max(self.chart_container.winfo_width() - 40, 700)
         height = max(self.chart_container.winfo_height() - 40, 360)
-        if os.path.exists(image_path):
+        if self.df is not None and os.path.exists(image_path):
             try:
                 img = PIL.Image.open(image_path)
                 img.thumbnail((width, height), PIL.Image.Resampling.LANCZOS)
